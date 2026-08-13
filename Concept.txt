@@ -1,0 +1,567 @@
+Product concept
+
+Working name: AI Hotkey Automation Builder
+
+                    ┌────────────────┐
+                    │       USER          │
+                    │                     │
+                    │ Ctrl + Alt + P      │
+                    │                     │
+                    │ "Open my project    │
+                    │  in VS Code"        │
+                    └──────────┬─────┘
+                               │
+                               ▼
+                    ┌─────────────────┐
+                    │    AI PLANNER        │
+                    │                      │
+                    │ Understand request   │
+                    │ Break into subtasks  │
+                    │ Choose actions       │
+                    └──────────┬──────┘
+                               │
+                               ▼
+                    ┌────────────────┐
+                    │ AUTOMATION DSL      │
+                    │                     │
+                    │ Structured actions  │
+                    │ + conditions        │
+                    │ + verification      │
+                    └──────────┬─────┘
+                               │
+                               ▼
+                    ┌────────────────┐
+                    │ AUTOMATION ENGINE   │
+                    │                     │
+                    │ Windows APIs        │
+                    │ UI Automation       │
+                    │ Keyboard / Mouse    │
+                    │ Process APIs        │
+                    └──────────┬─────┘
+                               │
+                               ▼
+                    ┌────────────────┐
+                    │      OBSERVER       │
+                    │                     │
+                    │ Did it work?        │
+                    │ What changed?       │
+                    └──────────┬─────┘
+                               	  │
+                    ┌──────────┴──── ─┐
+                    ▼                     ▼
+                  SUCCESS               FAILURE
+                    │                     │
+                    ▼                     ▼
+                 Save it              User feedback
+                                          │
+                                          ▼
+                                     AI repairs
+                                          │
+                                          └──────► Test again
+
+MVP scope
+
+Don't try to build the full AI desktop agent immediately.
+
+I'd make V1 capable of five things:
+
+A. Create a hotkey
+
+User enters:
+
+Ctrl + Alt + P
+
+Application checks whether it can register it.
+
+✓ Hotkey available
+
+or:
+
+⚠ Unable to register this hotkey.
+
+Try:
+Ctrl + Shift + P
+B. Describe the automation
+
+User writes:
+
+Open my Projects folder and let me select a project, then open it in VS Code.
+
+AI produces a human-readable plan:
+
+1. Open project selector
+2. Read configured Projects directory
+3. Display available projects
+4. Wait for project selection
+5. Launch VS Code with selected project
+6. Verify VS Code opened the project
+
+User sees this before anything executes.
+
+C. Generate structured automation
+
+Instead of generating AHK/PowerShell:
+
+User request
+     ↓
+LLM
+     ↓
+Automation DSL
+     ↓
+Validator
+     ↓
+Execution
+
+Example:
+
+{
+  "trigger": {
+    "type": "hotkey",
+    "keys": ["CTRL", "ALT", "P"]
+  },
+  "actions": [
+    {
+      "type": "list_directories",
+      "path": "C:\\Projects"
+    },
+    {
+      "type": "select_item"
+    },
+    {
+      "type": "launch_application",
+      "application": "vscode",
+      "arguments": ["${selected_item}"]
+    },
+    {
+      "type": "verify_window",
+      "application": "vscode"
+    }
+  ]
+}
+
+The LLM plans.
+
+Your application executes.
+
+That separation is extremely important.
+
+1. The automation engine
+
+I'd build the first engine around a relatively small set of primitives.
+
+System
+launch_process
+close_process
+focus_window
+minimize_window
+maximize_window
+wait
+Keyboard
+press_key
+release_key
+hotkey
+type_text
+Mouse
+move_mouse
+click
+double_click
+scroll
+UI Automation
+find_element
+click_element
+read_element
+select_element
+wait_for_element
+Files
+list_files
+list_directories
+open_file
+open_folder
+Application
+launch_application
+
+Start small.
+
+You can add primitives as you encounter real user requirements.
+
+2. Execution hierarchy
+
+This is one of the most important design decisions.
+
+When the AI wants to perform something, don't let it immediately resort to mouse coordinates.
+
+Use this hierarchy:
+
+        Desired action
+              │
+              ▼
+      ┌───────────────┐
+      │ Native API?       │
+      └───────┬───────┘
+              │
+          yes │ no
+              ▼
+      ┌───────────────┐
+      │ Application       │
+      │ API / CLI?        │
+      └───────┬───────┘
+              │
+          yes │ no
+              ▼
+      ┌───────────────┐
+      │ UI Automation     │
+      └───────┬───────┘
+              │
+          yes │ no
+              ▼
+      ┌───────────────┐
+      │ Keyboard/Mouse    │
+      │   simulation      │
+      └───────────────┘
+
+For example:
+
+Open VS Code project
+
+Don't do:
+
+click Start
+type VS Code
+click VS Code
+Ctrl+O
+...
+
+Instead:
+
+launch_process("Code.exe", project_path)
+
+Much more reliable.
+
+3. AI generation flow
+
+The actual AI interaction could look like this:
+
+                    USER
+                      │
+                      ▼
+            ┌─────────────────┐
+            │ Natural language	   │
+            │     request          │
+            └────────┬────────┘
+                     ▼
+              Intent analysis
+                     │
+                     ▼
+              Task decomposition
+                     │
+                     ▼
+            Available capabilities
+                     │
+                     ▼
+              Generate DSL
+                     │
+                     ▼
+                Validate
+                     │
+                     ▼
+             Show user preview
+                     │
+                [Test]
+                     ▼
+                 Execute
+
+The model receives a tool/capability description such as:
+
+Available actions:
+
+launch_application
+find_window
+find_ui_element
+click_element
+type_text
+press_key
+wait
+list_directories
+...
+
+It then has to construct a plan using only those capabilities.
+
+4. Testing should be a first-class feature
+
+After generation:
+
+Automation generated
+
+✓ Hotkey registered
+✓ Plan validated
+
+Ready to test.
+
+[ ▶ Run Test ]
+
+Then your application records execution:
+
+09:31:42  Hotkey triggered
+09:31:42  Found project directory
+09:31:43  Displayed project selector
+09:31:47  User selected "ScoutOS"
+09:31:47  Launching VS Code
+09:31:50  VS Code detected
+09:31:50  ✓ Automation completed
+
+This gives the LLM useful information if something goes wrong.
+
+5. Failure → repair loop
+
+This is probably the most interesting part of the product.
+
+Suppose:
+
+It opened the wrong application.
+
+Your UI:
+
+Automation failed
+
+What went wrong?
+
+┌────────────────────────────────────┐
+│ It opened Chrome instead of VS Code			│
+└────────────────────────────────────┘
+
+[ Fix Automation ]
+
+The AI gets:
+
+ORIGINAL REQUEST
+"Open my project in VS Code"
+
+ORIGINAL PLAN
+...
+
+EXECUTION LOG
+...
+
+USER FEEDBACK
+"It opened Chrome instead of VS Code."
+
+AVAILABLE CAPABILITIES
+...
+
+Then it generates a corrected plan.
+
+Problem identified:
+
+The previous plan relied on the generic application
+launcher.
+
+I'll explicitly target the configured VS Code executable.
+
+[ Apply Fix ]
+
+[ Test Again ]
+
+6. Eventually add screen/UI inspection
+
+This is where the product starts becoming genuinely powerful.
+
+You could have:
+
+Inspect Mode
+
+User clicks:
+
+🔍 Inspect
+
+Then selects something on screen.
+
+Your app gathers information such as:
+
+Window
+├── Application: Chrome
+│
+└── Element
+    ├── Name: New Tab
+    ├── Type: Button
+    ├── Automation ID: ...
+    └── Bounding Rectangle: ...
+
+The AI can use that information to construct a reliable selector.
+
+This is much better than blindly generating:
+
+click(713, 42)
+
+7. Automation storage
+
+I'd store each automation as a local project/configuration.
+
+Something like:
+
+ShortcutAI/
+│
+├── automations/
+│   ├── project-launcher.json
+│   ├── spotify-play.json
+│   └── work-environment.json
+│
+├── settings.json
+│
+└── logs/
+    ├── project-launcher/
+    └── spotify-play/
+
+An automation contains:
+
+ID
+Name
+Hotkey
+Description
+DSL
+Version
+Enabled
+Startup enabled
+Execution history
+
+This also makes versioning possible.
+
+If AI breaks something:
+
+Version 3
+   ↓
+doesn't work
+
+[Restore Version 2]
+
+8. Startup
+
+The user shouldn't have to manually put scripts into the Startup folder.
+
+In settings:
+
+Startup
+
+☑ Start ShortcutAI with Windows
+
+☑ Load enabled automations
+
+When Windows starts:
+
+Windows
+   ↓
+ShortcutAI.exe
+   ↓
+Load automations
+   ↓
+Register global hotkeys
+   ↓
+Background/tray mode
+
+And this is where your earlier project-launcher work naturally fits in.
+
+9. UI structure
+
+I'd keep the first UI extremely simple.
+
+Home
+┌────────────────────────────────┐
+│ ShortcutAI                         ⚙     │
+├────────────────────────────────┤
+│                                          │
+│  Your Automations                        │
+│                                          │
+│  🟢 Ctrl + Alt + P                       │
+│     Project Launcher                     │
+│                                          │
+│  🟢 Ctrl + Alt + S                       │
+│     Spotify Play/Pause                   │
+│                                          │
+│  🟢 Ctrl + Shift + W                     │
+│     Open Work Environment                │
+│                                          │
+│                 + New Automation         │
+│                                          │
+└────────────────────────────────┘
+New Automation
+┌────────────────────────────────┐
+│ Create Automation                        │
+│                                          │
+│ Hotkey                                   │
+│ [ Ctrl + Alt + P ]                       │
+│ ✓ Available                              │
+│                                          │
+│ What should happen?                      │
+│ ┌─────────────────────────────┐ │
+│ │ Open my projects and let me choose   │ │
+│ │ one to open in VS Code               │ │
+│ └─────────────────────────────┘ │
+│                                          │
+│              [ Generate ]                │
+└────────────────────────────────┘
+Generated
+┌────────────────────────────────┐
+│ Project Launcher                         │
+│                                          │
+│ Ctrl + Alt + P                           │
+│                                          │
+│ AI generated:                            │
+│                                          │
+│ ✓ Find projects                          │
+│ ✓ Show project selector                  │
+│ ✓ Wait for selection                     │
+│ ✓ Launch VS Code                         │
+│ ✓ Verify project                         │
+│                                          │
+│ [ Test Automation ]   [ Edit ]           │
+└────────────────────────────────┘
+
+Recommended technical architecture
+
+For the first serious implementation:
+
+┌──────────────────────────────────────────────┐
+│                 Desktop UI                   				 │
+│             C# / .NET / WinUI                				 │
+└──────────────────────┬───────────────────────┘
+                       │
+             ┌─────────┴─────┐
+             │                   │
+             ▼                   ▼
+       AI Orchestrator      Automation Manager
+             │                   │
+             ▼                   ▼
+        LLM Provider        Execution Engine
+                                 │
+               ┌─────────────┼────────────┐
+               ▼                 ▼               ▼
+          Win32 APIs           UIA          SendInput
+               │                 │               │
+               └─────────────┼────────────┘
+                                 ▼
+                            Windows
+AI layer
+
+Initially:
+
+LLM API
+
+Later:
+
+Cloud model
+     +
+Local model
+     +
+Fine-tuned automation model
+Storage
+
+Start with:
+
+SQLite
+
+It's enough for:
+
+automations
+settings
+versions
+execution history
+feedback

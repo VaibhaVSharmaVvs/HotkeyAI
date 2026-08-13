@@ -1,0 +1,34 @@
+name: schema
+
+on:
+  push:
+    paths: ['schema/**', 'examples/**', 'docs/capabilities.md', 'tools/schema-checks/**', '.github/workflows/schema.yml']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  schema-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - run: pip install jsonschema
+
+      # Schema hygiene: valid draft 2020-12, resolvable refs, NO $ref cycles, no keywords
+      # outside the structured-output subset, description coverage. The cycle check is the
+      # V2 precondition — structured outputs reject recursive schemas.
+      - name: schema hygiene
+        run: python tools/schema-checks/check_schema.py schema/hotkeyai-dsl-v1.schema.json
+
+      # Every example validates, 14 negative cases are rejected, and every action type is
+      # exercised by at least one example.
+      - name: examples and negative cases
+        run: python tools/schema-checks/validate_examples.py .
+
+      # docs/capabilities.md is generated. Fails if it has drifted from the schema.
+      - name: capabilities doc is current
+        run: python tools/schema-checks/gen_capabilities.py . --check

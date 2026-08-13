@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "name": "Open a Solution",
+  "description": "Finds every .sln under Projects, lets you pick one, and opens it with whatever Windows associates with .sln files.",
+  "trigger": {
+    "type": "hotkey",
+    "keys": ["CTRL", "ALT", "O"]
+  },
+  "variables": [
+    { "name": "solutions", "type": "pathList" },
+    { "name": "chosen", "type": "path" }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "list_files",
+      "comment": "Depth 3 catches src/ and nested project layouts without walking the whole tree.",
+      "path": "C:\\Users\\vaibhav\\Desktop\\Projects",
+      "pattern": "*.sln",
+      "depth": 3,
+      "into": "solutions"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "condition": { "type": "variable_empty", "variable": "solutions" },
+      "then": [
+        { "id": "s2a", "type": "notify", "message": "No .sln files found.", "level": "warning" },
+        { "id": "s2b", "type": "abort", "reason": "No solutions under the Projects directory." }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "show_picker",
+      "source": "solutions",
+      "prompt": "Open which solution?",
+      "into": "chosen",
+      "timeoutMs": 30000,
+      "onError": "abort"
+    },
+    {
+      "id": "s4",
+      "type": "open_path",
+      "comment": "The specific IDE does not matter here, so let the shell decide rather than hardcoding one.",
+      "path": "${chosen}"
+    }
+  ]
+}

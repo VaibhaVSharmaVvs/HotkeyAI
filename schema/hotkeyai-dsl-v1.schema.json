@@ -1,0 +1,927 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hotkeyai.local/schema/hotkeyai-dsl-v1.schema.json",
+  "title": "Hotkey AI Automation",
+  "description": "A single Hotkey AI automation: a trigger plus an ordered list of actions the engine executes. This schema is the authoritative contract. It contains only what a planner authors — runtime state (enabled flag, version number, signature, execution history) is owned by the application and never appears in this document. Numeric bounds stated in descriptions are enforced by the application's policy validator, not by this schema, because numeric constraints are outside the schema subset used for constrained generation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "trigger", "actions"],
+  "properties": {
+    "schemaVersion": {
+      "description": "Schema version this document targets. Always 1 for this schema.",
+      "const": 1
+    },
+    "name": {
+      "description": "Short human-readable name, shown in the automation list. Example: 'Project Launcher'.",
+      "type": "string"
+    },
+    "description": {
+      "description": "Optional one-or-two-sentence explanation of what this automation does and when to use it. Shown in the plan preview.",
+      "type": "string"
+    },
+    "trigger": {
+      "description": "What causes this automation to run.",
+      "$ref": "#/$defs/Trigger"
+    },
+    "variables": {
+      "description": "Variables this automation uses. Every variable written by an action's 'into' field must be declared here first, with a matching type. Referenced elsewhere as ${name}.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/VariableDeclaration" }
+    },
+    "actions": {
+      "description": "The ordered list of actions to execute. Execution stops at the first action that fails unless that action sets onError to 'continue'. Nesting rule: there are three action levels, so a control-flow action ('if' or 'foreach') may contain another control-flow action, but that inner one may contain leaf actions only. In other words at most two control-flow actions may be nested, and the deepest bodies hold plain actions. This is a deliberate limit, not an oversight — it keeps every plan statically analysable.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/ActionL0" }
+    }
+  },
+
+  "$defs": {
+
+    "Trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "keys"],
+      "properties": {
+        "type": {
+          "description": "Trigger kind. Only global hotkeys are supported in this version.",
+          "const": "hotkey"
+        },
+        "keys": {
+          "description": "The chord that fires this automation, as modifiers followed by exactly one non-modifier key. Example: ['CTRL','ALT','P']. Note that Windows reserves some combinations (most WIN chords, CTRL+ALT+DEL) and cannot register them.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/KeyName" }
+        }
+      }
+    },
+
+    "KeyName": {
+      "description": "A single key name. Modifiers are CTRL, ALT, SHIFT, WIN.",
+      "type": "string",
+      "enum": [
+        "CTRL", "ALT", "SHIFT", "WIN",
+        "A","B","C","D","E","F","G","H","I","J","K","L","M",
+        "N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
+        "D0","D1","D2","D3","D4","D5","D6","D7","D8","D9",
+        "F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12",
+        "SPACE","ENTER","TAB","ESC","BACKSPACE","DELETE","INSERT",
+        "HOME","END","PAGEUP","PAGEDOWN",
+        "LEFT","RIGHT","UP","DOWN",
+        "OEM_COMMA","OEM_PERIOD","OEM_MINUS","OEM_PLUS","OEM_1","OEM_2","OEM_3","OEM_4","OEM_5","OEM_6","OEM_7"
+      ]
+    },
+
+    "VariableDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "description": "Variable name. Letters, digits and underscore; must not start with a digit.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "type": {
+          "description": "Declared type. The validator rejects a plan that writes or reads a variable at the wrong type — for example passing a 'text' variable where a 'path' is required.",
+          "type": "string",
+          "enum": ["text", "path", "pathList", "textList", "boolean", "integer"]
+        }
+      }
+    },
+
+    "TemplateString": {
+      "description": "A string that may interpolate variables using ${name} or ${name.property}. Available properties on a path value are: .name (file or folder name), .fullPath, .parent, .extension.",
+      "type": "string"
+    },
+
+    "VariableName": {
+      "description": "The bare name of a declared variable, with no ${} wrapper.",
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+
+    "WindowSelector": {
+      "description": "Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice.",
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["processName"] },
+        { "required": ["titleContains"] },
+        { "required": ["titleRegex"] },
+        { "required": ["className"] }
+      ],
+      "properties": {
+        "processName": {
+          "description": "Process name without the .exe extension. Example: 'Code', 'explorer', 'chrome'.",
+          "type": "string"
+        },
+        "titleContains": {
+          "description": "Case-insensitive substring of the window title.",
+          "$ref": "#/$defs/TemplateString"
+        },
+        "titleRegex": {
+          "description": "Regular expression matched against the window title. Use only when a substring match is insufficient.",
+          "type": "string"
+        },
+        "className": {
+          "description": "Win32 window class name. Rarely needed; use when title and process are ambiguous.",
+          "type": "string"
+        }
+      }
+    },
+
+    "Postcondition": {
+      "description": "A machine-checkable statement about the state of the system after an action completes. Only these five checks can be verified. An action with no 'expect' is reported to the user as unverified — prefer adding one wherever it is meaningful.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "processName"],
+          "properties": {
+            "type": { "const": "process_running" },
+            "processName": { "description": "Process name without .exe.", "type": "string" },
+            "withinMs": { "description": "How long to poll before declaring failure. Policy bound: 100 to 120000. Defaults to 5000.", "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "selector"],
+          "properties": {
+            "type": { "const": "window_exists" },
+            "selector": { "$ref": "#/$defs/WindowSelector" },
+            "withinMs": { "description": "How long to poll before declaring failure. Policy bound: 100 to 120000. Defaults to 5000.", "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path"],
+          "properties": {
+            "type": { "const": "path_exists" },
+            "path": { "description": "File or directory that must exist once the action completes.", "$ref": "#/$defs/TemplateString" },
+            "withinMs": { "description": "How long to poll before declaring failure. Policy bound: 100 to 120000. Defaults to 5000.", "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "oneOf": [ { "required": ["contains"] }, { "required": ["equals"] } ],
+          "properties": {
+            "type": { "const": "clipboard_matches" },
+            "contains": { "description": "Clipboard text must contain this substring.", "$ref": "#/$defs/TemplateString" },
+            "equals": { "description": "Clipboard text must equal this exactly.", "$ref": "#/$defs/TemplateString" },
+            "withinMs": { "description": "How long to poll before declaring failure. Policy bound: 100 to 120000. Defaults to 5000.", "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "processName"],
+          "properties": {
+            "type": { "const": "foreground_process_is" },
+            "processName": { "description": "Process name without .exe that must own the foreground window.", "type": "string" },
+            "withinMs": { "description": "How long to poll before declaring failure. Policy bound: 100 to 120000. Defaults to 5000.", "type": "integer" }
+          }
+        }
+      ]
+    },
+
+    "OnError": {
+      "description": "What to do if this action fails or its postcondition is not met. 'abort' stops the automation and reports the failure; 'continue' logs it and proceeds to the next action. Defaults to 'abort'.",
+      "type": "string",
+      "enum": ["abort", "continue"]
+    },
+
+    "TimeoutMs": {
+      "description": "Maximum time this action may take before it is treated as failed. Policy bound: 100 to 300000. Also note the whole-automation caps of 200 actions and 120 seconds.",
+      "type": "integer"
+    },
+
+    "ActionId": {
+      "description": "Stable identifier for this action, unique within the automation. Used in execution logs, failure reports and plan diffs, so keep it stable when editing an existing plan. Convention: 's1', 's2', ...",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+
+    "ActionComment": {
+      "description": "Optional note about why this action exists. Shown in the plan preview.",
+      "type": "string"
+    },
+
+    "LaunchProcess": {
+      "description": "Start an application. Prefer 'app' over 'path': naming a logical application lets the engine resolve the real executable from its registry of known install locations, which is what makes this robust across machines and updates. Use 'path' only for an executable the registry does not know.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "oneOf": [ { "required": ["app"] }, { "required": ["path"] } ],
+      "properties": {
+        "type": { "const": "launch_process" },
+        "app": {
+          "description": "Logical application name resolved by the engine's app registry. Known values include: vscode, explorer, chrome, edge, firefox, terminal, powershell, notepad, spotify, slack, outlook, obsidian. If the app you need is absent, use 'path'.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Absolute path to an executable. Must sit under one of the configured allowed roots — the policy validator rejects anything else.",
+          "$ref": "#/$defs/TemplateString"
+        },
+        "argv": {
+          "description": "Arguments as a list of separate strings, never one command line. Each element is passed as a single argument, so no quoting or escaping is needed and shell metacharacters have no special meaning.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/TemplateString" }
+        },
+        "workingDirectory": {
+          "description": "Working directory for the new process. Defaults to the executable's own directory.",
+          "$ref": "#/$defs/TemplateString"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "TerminateProcess": {
+      "description": "Close a running process. This is a destructive action: the application prompts the user for confirmation the first time an automation uses it. Prefer close_window, which lets the app save state and shut down cleanly.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "processName"],
+      "properties": {
+        "type": { "const": "terminate_process" },
+        "processName": { "description": "Process name without .exe.", "type": "string" },
+        "force": {
+          "description": "Kill without waiting for a clean exit. Unsaved work is lost. Defaults to false.",
+          "type": "boolean"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "WaitForProcess": {
+      "description": "Block until a process is running. Use after launching something slow, when the next action depends on it being up.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "processName"],
+      "properties": {
+        "type": { "const": "wait_for_process" },
+        "processName": { "description": "Process name without .exe.", "type": "string" },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "FocusWindow": {
+      "description": "Bring a window to the foreground and give it keyboard focus. Required before send_keys or type_text unless the target already has focus.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "selector"],
+      "properties": {
+        "type": { "const": "focus_window" },
+        "selector": { "$ref": "#/$defs/WindowSelector" },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "MinimizeWindow": {
+      "description": "Minimize a window.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "selector"],
+      "properties": {
+        "type": { "const": "minimize_window" },
+        "selector": { "$ref": "#/$defs/WindowSelector" },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "MaximizeWindow": {
+      "description": "Maximize a window.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "selector"],
+      "properties": {
+        "type": { "const": "maximize_window" },
+        "selector": { "$ref": "#/$defs/WindowSelector" },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "MoveWindow": {
+      "description": "Move or resize a window to a named position, optionally on a specific monitor. Named positions are used instead of pixel coordinates so a plan keeps working across different screen sizes and DPI settings.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "selector", "position"],
+      "properties": {
+        "type": { "const": "move_window" },
+        "selector": { "$ref": "#/$defs/WindowSelector" },
+        "position": {
+          "description": "Target layout position.",
+          "type": "string",
+          "enum": ["left_half", "right_half", "top_half", "bottom_half", "maximized", "centered", "top_left_quarter", "top_right_quarter", "bottom_left_quarter", "bottom_right_quarter"]
+        },
+        "monitor": {
+          "description": "Which monitor to place the window on: 'primary', 'secondary', or a 1-based index as a string such as '2'. Defaults to the monitor the window is already on.",
+          "type": "string"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "CloseWindow": {
+      "description": "Ask a window to close, as if the user clicked its close button. The application may prompt to save. Prefer this over terminate_process.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "selector"],
+      "properties": {
+        "type": { "const": "close_window" },
+        "selector": { "$ref": "#/$defs/WindowSelector" },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "WaitForWindow": {
+      "description": "Block until a matching window exists. Use after launching an application, before sending it any input.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "selector"],
+      "properties": {
+        "type": { "const": "wait_for_window" },
+        "selector": { "$ref": "#/$defs/WindowSelector" },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "SendKeys": {
+      "description": "Send one keyboard chord to whichever window currently has focus. Focus the target window first. This is a last resort: prefer launching with arguments, or send_appcommand for media keys, because synthetic input cannot reach windows running at a higher integrity level than this application and will silently do nothing there.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "keys"],
+      "properties": {
+        "type": { "const": "send_keys" },
+        "keys": {
+          "description": "The chord to send, as modifiers followed by one non-modifier key. Example: ['CTRL','SHIFT','N'].",
+          "type": "array",
+          "items": { "$ref": "#/$defs/KeyName" }
+        },
+        "repeat": {
+          "description": "How many times to send the chord. Policy bound: 1 to 50. Defaults to 1.",
+          "type": "integer"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "TypeText": {
+      "description": "Type literal text into the focused window. The application refuses to run this when the foreground window is a password field, a credential prompt, or a UAC dialog. Never put secrets in a plan — plans are stored as plain JSON on disk.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "type_text" },
+        "text": {
+          "description": "The text to type. May interpolate variables.",
+          "$ref": "#/$defs/TemplateString"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "SendAppCommand": {
+      "description": "Send a system-wide multimedia or browser command. This is the correct way to control media playback: it reaches whichever application owns playback without needing to find, focus, or click anything, and works even when that application is minimized. Use this rather than focusing a media player and sending keys to it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "command"],
+      "properties": {
+        "type": { "const": "send_appcommand" },
+        "command": {
+          "description": "The command to broadcast.",
+          "type": "string",
+          "enum": ["media_play_pause", "media_next_track", "media_previous_track", "media_stop", "volume_up", "volume_down", "volume_mute", "browser_back", "browser_forward", "browser_refresh"]
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "ListDirectories": {
+      "description": "List subdirectories of a path into a variable of type pathList. Commonly paired with show_picker to let the user choose one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path", "into"],
+      "properties": {
+        "type": { "const": "list_directories" },
+        "path": {
+          "description": "Directory to list. Must sit under a configured allowed root.",
+          "$ref": "#/$defs/TemplateString"
+        },
+        "depth": {
+          "description": "How many levels to descend. 1 means immediate children only. Policy bound: 1 to 5. Defaults to 1.",
+          "type": "integer"
+        },
+        "into": {
+          "description": "Name of a declared pathList variable to receive the results.",
+          "$ref": "#/$defs/VariableName"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "ListFiles": {
+      "description": "List files under a path into a variable of type pathList.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path", "into"],
+      "properties": {
+        "type": { "const": "list_files" },
+        "path": {
+          "description": "Directory to search. Must sit under a configured allowed root.",
+          "$ref": "#/$defs/TemplateString"
+        },
+        "pattern": {
+          "description": "Glob pattern to match file names, for example '*.sln'. Defaults to all files.",
+          "type": "string"
+        },
+        "depth": {
+          "description": "How many levels to descend. Policy bound: 1 to 5. Defaults to 1.",
+          "type": "integer"
+        },
+        "into": {
+          "description": "Name of a declared pathList variable to receive the results.",
+          "$ref": "#/$defs/VariableName"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "PathExists": {
+      "description": "Test whether a path exists, storing the answer in a boolean variable. Use with an 'if' action to branch.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path", "into"],
+      "properties": {
+        "type": { "const": "path_exists" },
+        "path": { "description": "File or directory to test for.", "$ref": "#/$defs/TemplateString" },
+        "into": {
+          "description": "Name of a declared boolean variable to receive the result.",
+          "$ref": "#/$defs/VariableName"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "OpenPath": {
+      "description": "Open a file or folder with whatever application Windows associates with it, as if the user double-clicked it. Use this when the specific application does not matter; use launch_process with an 'app' when it does.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path"],
+      "properties": {
+        "type": { "const": "open_path" },
+        "path": {
+          "description": "File or folder to open. Must sit under a configured allowed root.",
+          "$ref": "#/$defs/TemplateString"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "SetClipboard": {
+      "description": "Replace the clipboard contents with text. Note this destroys whatever the user had copied.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "set_clipboard" },
+        "text": { "description": "Text to place on the clipboard.", "$ref": "#/$defs/TemplateString" },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "GetClipboard": {
+      "description": "Read the clipboard into a text variable. Clipboard contents are redacted from execution logs.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "into"],
+      "properties": {
+        "type": { "const": "get_clipboard" },
+        "into": {
+          "description": "Name of a declared text variable to receive the clipboard text.",
+          "$ref": "#/$defs/VariableName"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "ShowPicker": {
+      "description": "Show a fuzzy-search overlay listing the items in a list variable and store the user's choice. The automation pauses until the user picks or cancels; cancelling is treated as a failure, so set onError deliberately.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "source", "into"],
+      "properties": {
+        "type": { "const": "show_picker" },
+        "source": {
+          "description": "Name of a declared pathList or textList variable holding the items to choose from.",
+          "$ref": "#/$defs/VariableName"
+        },
+        "prompt": {
+          "description": "Prompt shown above the list. Example: 'Open which project?'",
+          "$ref": "#/$defs/TemplateString"
+        },
+        "into": {
+          "description": "Name of a declared variable to receive the chosen item. Its type must match the element type of 'source' — path for a pathList, text for a textList.",
+          "$ref": "#/$defs/VariableName"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "ShowInput": {
+      "description": "Prompt the user to type a value and store it in a text variable. The automation pauses until the user submits or cancels.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "prompt", "into"],
+      "properties": {
+        "type": { "const": "show_input" },
+        "prompt": { "description": "Prompt shown to the user.", "$ref": "#/$defs/TemplateString" },
+        "defaultValue": { "description": "Pre-filled value.", "$ref": "#/$defs/TemplateString" },
+        "into": {
+          "description": "Name of a declared text variable to receive the entered value.",
+          "$ref": "#/$defs/VariableName"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "Notify": {
+      "description": "Show a transient toast notification. Does not block.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message"],
+      "properties": {
+        "type": { "const": "notify" },
+        "message": { "description": "Text shown in the toast.", "$ref": "#/$defs/TemplateString" },
+        "level": {
+          "description": "Visual severity. Defaults to 'info'.",
+          "type": "string",
+          "enum": ["info", "warning", "error"]
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "timeoutMs": { "$ref": "#/$defs/TimeoutMs" },
+        "onError": { "$ref": "#/$defs/OnError" },
+        "expect": { "$ref": "#/$defs/Postcondition" }
+      }
+    },
+
+    "Wait": {
+      "description": "Pause for a fixed duration. Prefer wait_for_window or wait_for_process, which finish as soon as the condition holds instead of always burning the full delay. Use a fixed wait only when there is nothing observable to wait on.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "durationMs"],
+      "properties": {
+        "type": { "const": "wait" },
+        "durationMs": {
+          "description": "How long to pause. Policy bound: 10 to 30000.",
+          "type": "integer"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" },
+        "onError": { "$ref": "#/$defs/OnError" }
+      }
+    },
+
+    "Abort": {
+      "description": "Stop the automation immediately and report the reason. Typically used inside an 'if' branch when a precondition does not hold.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "abort" },
+        "reason": {
+          "description": "Message shown to the user explaining why the automation stopped.",
+          "$ref": "#/$defs/TemplateString"
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" }
+      }
+    },
+
+    "Negate": {
+      "description": "Invert this predicate, so it holds when the stated condition is false. Defaults to false.",
+      "type": "boolean"
+    },
+
+    "SimplePredicate": {
+      "description": "A single testable condition, used by the 'if' action and by all_of / any_of.",
+      "oneOf": [
+        {
+          "description": "True when a named process is running.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "processName"],
+          "properties": {
+            "type": { "const": "process_running" },
+            "processName": { "description": "Process name without the .exe extension.", "type": "string" },
+            "negate": { "$ref": "#/$defs/Negate" }
+          }
+        },
+        {
+          "description": "True when a window matching the selector exists.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "selector"],
+          "properties": {
+            "type": { "const": "window_exists" },
+            "selector": { "$ref": "#/$defs/WindowSelector" },
+            "negate": { "$ref": "#/$defs/Negate" }
+          }
+        },
+        {
+          "description": "True when a file or directory exists at the given path.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path"],
+          "properties": {
+            "type": { "const": "path_exists" },
+            "path": { "description": "File or directory to test for.", "$ref": "#/$defs/TemplateString" },
+            "negate": { "$ref": "#/$defs/Negate" }
+          }
+        },
+        {
+          "description": "True when a variable's value equals the given value, compared as text.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "variable", "value"],
+          "properties": {
+            "type": { "const": "variable_equals" },
+            "variable": { "description": "Name of the declared variable to test.", "$ref": "#/$defs/VariableName" },
+            "value": { "description": "Value to compare against.", "$ref": "#/$defs/TemplateString" },
+            "negate": { "$ref": "#/$defs/Negate" }
+          }
+        },
+        {
+          "description": "True when a variable is unset, empty text, or an empty list. Useful after a show_picker or a list action that may have produced nothing.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "variable"],
+          "properties": {
+            "type": { "const": "variable_empty" },
+            "variable": { "description": "Name of the declared variable to test.", "$ref": "#/$defs/VariableName" },
+            "negate": { "$ref": "#/$defs/Negate" }
+          }
+        }
+      ]
+    },
+
+    "Condition": {
+      "description": "The test for an 'if' action. Either a single predicate, or all_of / any_of over a flat list of predicates. Conditions do not nest beyond that, which keeps every plan statically analysable.",
+      "oneOf": [
+        { "$ref": "#/$defs/SimplePredicate" },
+        {
+          "description": "True only when every listed predicate holds.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "conditions"],
+          "properties": {
+            "type": { "const": "all_of" },
+            "conditions": { "description": "Predicates that must all hold.", "type": "array", "items": { "$ref": "#/$defs/SimplePredicate" } }
+          }
+        },
+        {
+          "description": "True when at least one listed predicate holds.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "conditions"],
+          "properties": {
+            "type": { "const": "any_of" },
+            "conditions": { "description": "Predicates of which at least one must hold.", "type": "array", "items": { "$ref": "#/$defs/SimplePredicate" } }
+          }
+        }
+      ]
+    },
+
+    "LeafAction": {
+      "description": "Any action that does not contain other actions. Available at every nesting level.",
+      "oneOf": [
+        { "$ref": "#/$defs/LaunchProcess" },
+        { "$ref": "#/$defs/TerminateProcess" },
+        { "$ref": "#/$defs/WaitForProcess" },
+        { "$ref": "#/$defs/FocusWindow" },
+        { "$ref": "#/$defs/MinimizeWindow" },
+        { "$ref": "#/$defs/MaximizeWindow" },
+        { "$ref": "#/$defs/MoveWindow" },
+        { "$ref": "#/$defs/CloseWindow" },
+        { "$ref": "#/$defs/WaitForWindow" },
+        { "$ref": "#/$defs/SendKeys" },
+        { "$ref": "#/$defs/TypeText" },
+        { "$ref": "#/$defs/SendAppCommand" },
+        { "$ref": "#/$defs/ListDirectories" },
+        { "$ref": "#/$defs/ListFiles" },
+        { "$ref": "#/$defs/PathExists" },
+        { "$ref": "#/$defs/OpenPath" },
+        { "$ref": "#/$defs/SetClipboard" },
+        { "$ref": "#/$defs/GetClipboard" },
+        { "$ref": "#/$defs/ShowPicker" },
+        { "$ref": "#/$defs/ShowInput" },
+        { "$ref": "#/$defs/Notify" },
+        { "$ref": "#/$defs/Wait" },
+        { "$ref": "#/$defs/Abort" }
+      ]
+    },
+
+    "IfL0": {
+      "description": "Run one branch or the other depending on a condition. Actions inside the branches may nest one level further.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "condition", "then"],
+      "properties": {
+        "type": { "const": "if" },
+        "condition": { "$ref": "#/$defs/Condition" },
+        "then": {
+          "description": "Actions to run when the condition holds.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ActionL1" }
+        },
+        "else": {
+          "description": "Actions to run when the condition does not hold. Omit if there is nothing to do.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ActionL1" }
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" }
+      }
+    },
+
+    "IfL1": {
+      "description": "An 'if' nested one level deep. Its branches may contain only leaf actions — nesting stops here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "condition", "then"],
+      "properties": {
+        "type": { "const": "if" },
+        "condition": { "$ref": "#/$defs/Condition" },
+        "then": {
+          "description": "Actions to run when the condition holds. Leaf actions only at this depth.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ActionL2" }
+        },
+        "else": {
+          "description": "Actions to run when the condition does not hold. Leaf actions only at this depth.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ActionL2" }
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" }
+      }
+    },
+
+    "ForEachL0": {
+      "description": "Run a body once per item in a list variable. The loop is bounded: it always iterates over an already-materialised list and never more than maxIterations times, so it cannot run away.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "source", "itemVariable", "body"],
+      "properties": {
+        "type": { "const": "foreach" },
+        "source": {
+          "description": "Name of a declared pathList or textList variable to iterate.",
+          "$ref": "#/$defs/VariableName"
+        },
+        "itemVariable": {
+          "description": "Name of a declared variable that holds the current item inside the body. Its type must match the element type of 'source'.",
+          "$ref": "#/$defs/VariableName"
+        },
+        "maxIterations": {
+          "description": "Hard cap on iterations, applied even if the list is longer. Policy bound: 1 to 100. Defaults to 25.",
+          "type": "integer"
+        },
+        "body": {
+          "description": "Actions to run once per item. Reference the current item as ${itemVariable}.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ActionL1" }
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" }
+      }
+    },
+
+    "ForEachL1": {
+      "description": "A 'foreach' nested one level deep. Its body may contain only leaf actions — nesting stops here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "source", "itemVariable", "body"],
+      "properties": {
+        "type": { "const": "foreach" },
+        "source": { "description": "Name of a declared pathList or textList variable to iterate.", "$ref": "#/$defs/VariableName" },
+        "itemVariable": { "description": "Name of a declared variable holding the current item inside the body. Its type must match the element type of 'source'.", "$ref": "#/$defs/VariableName" },
+        "maxIterations": {
+          "description": "Hard cap on iterations. Policy bound: 1 to 100. Defaults to 25.",
+          "type": "integer"
+        },
+        "body": {
+          "description": "Actions to run once per item. Leaf actions only at this depth.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ActionL2" }
+        },
+        "id": { "$ref": "#/$defs/ActionId" },
+        "comment": { "$ref": "#/$defs/ActionComment" }
+      }
+    },
+
+    "ActionL2": {
+      "description": "Actions permitted at the deepest nesting level. Leaf actions only — no further nesting.",
+      "$ref": "#/$defs/LeafAction"
+    },
+
+    "ActionL1": {
+      "description": "Actions permitted one level inside a control-flow action.",
+      "oneOf": [
+        { "$ref": "#/$defs/LeafAction" },
+        { "$ref": "#/$defs/IfL1" },
+        { "$ref": "#/$defs/ForEachL1" }
+      ]
+    },
+
+    "ActionL0": {
+      "description": "Actions permitted at the top level of an automation.",
+      "oneOf": [
+        { "$ref": "#/$defs/LeafAction" },
+        { "$ref": "#/$defs/IfL0" },
+        { "$ref": "#/$defs/ForEachL0" }
+      ]
+    }
+  }
+}

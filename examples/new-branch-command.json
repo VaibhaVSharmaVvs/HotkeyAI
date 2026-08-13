@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "name": "New Branch Command",
+  "description": "Prompts for a branch name, puts the matching git command on the clipboard, and opens a terminal ready for you to paste it. There is deliberately no shell primitive, so the plan hands you the command rather than running it.",
+  "trigger": {
+    "type": "hotkey",
+    "keys": ["CTRL", "ALT", "B"]
+  },
+  "variables": [
+    { "name": "branch", "type": "text" }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "show_input",
+      "prompt": "New branch name?",
+      "defaultValue": "feature/",
+      "into": "branch",
+      "timeoutMs": 60000,
+      "onError": "abort"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "condition": { "type": "variable_empty", "variable": "branch" },
+      "then": [
+        { "id": "s2a", "type": "abort", "reason": "No branch name entered." }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "set_clipboard",
+      "comment": "Handing over the command instead of executing it is the honest option here — running arbitrary shell strings is exactly what this DSL refuses to do.",
+      "text": "git checkout -b ${branch}",
+      "expect": {
+        "type": "clipboard_matches",
+        "contains": "${branch}",
+        "withinMs": 2000
+      }
+    },
+    {
+      "id": "s4",
+      "type": "launch_process",
+      "app": "terminal"
+    },
+    {
+      "id": "s5",
+      "type": "wait_for_process",
+      "processName": "WindowsTerminal",
+      "timeoutMs": 15000
+    },
+    {
+      "id": "s6",
+      "type": "notify",
+      "message": "Command copied — paste it into the terminal.",
+      "level": "info"
+    }
+  ]
+}

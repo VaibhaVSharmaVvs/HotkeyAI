@@ -1,0 +1,41 @@
+# .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+artifacts/
+publish/
+TestResults/
+*.trx
+*.coverage
+*.coverofile
+
+# Rider / VS / VS Code
+.vs/
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Python (schema checks)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local runtime state — never commit; contains machine paths and user automations
+local/
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# OS
+Thumbs.db
+desktop.ini

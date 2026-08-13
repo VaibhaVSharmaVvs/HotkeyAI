@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "name": "Open Work Environment",
+  "description": "Sets up the morning workspace: editor on the left, browser on the right, Slack running. Reuses anything already open instead of launching a second copy.",
+  "trigger": {
+    "type": "hotkey",
+    "keys": ["CTRL", "SHIFT", "W"]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "if",
+      "comment": "Reuse an existing editor window rather than opening a duplicate.",
+      "condition": { "type": "process_running", "processName": "Code", "negate": true },
+      "then": [
+        {
+          "id": "s1a",
+          "type": "launch_process",
+          "app": "vscode",
+          "expect": {
+            "type": "window_exists",
+            "selector": { "processName": "Code" },
+            "withinMs": 20000
+          }
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "type": "wait_for_window",
+      "selector": { "processName": "Code" },
+      "timeoutMs": 20000
+    },
+    {
+      "id": "s3",
+      "type": "move_window",
+      "selector": { "processName": "Code" },
+      "position": "left_half",
+      "monitor": "primary"
+    },
+    {
+      "id": "s4",
+      "type": "if",
+      "condition": { "type": "process_running", "processName": "chrome", "negate": true },
+      "then": [
+        {
+          "id": "s4a",
+          "type": "launch_process",
+          "app": "chrome",
+          "expect": {
+            "type": "window_exists",
+            "selector": { "processName": "chrome" },
+            "withinMs": 20000
+          }
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "type": "wait_for_window",
+      "selector": { "processName": "chrome" },
+      "timeoutMs": 20000
+    },
+    {
+      "id": "s6",
+      "type": "move_window",
+      "selector": { "processName": "chrome" },
+      "position": "right_half",
+      "monitor": "primary"
+    },
+    {
+      "id": "s7",
+      "type": "if",
+      "comment": "Slack is wanted running but not in the way, so it is launched and left where it lands.",
+      "condition": { "type": "process_running", "processName": "slack", "negate": true },
+      "then": [
+        {
+          "id": "s7a",
+          "type": "launch_process",
+          "app": "slack",
+          "onError": "continue",
+          "expect": {
+            "type": "process_running",
+            "processName": "slack",
+            "withinMs": 30000
+          }
+        },
+        {
+          "id": "s7b",
+          "type": "minimize_window",
+          "selector": { "processName": "slack" },
+          "onError": "continue"
+        }
+      ]
+    },
+    {
+      "id": "s8",
+      "type": "focus_window",
+      "comment": "Leave the editor focused so you can start typing.",
+      "selector": { "processName": "Code" },
+      "expect": {
+        "type": "foreground_process_is",
+        "processName": "Code",
+        "withinMs": 5000
+      }
+    },
+    {
+      "id": "s9",
+      "type": "notify",
+      "message": "Work environment ready.",
+      "level": "info"
+    }
+  ]
+}

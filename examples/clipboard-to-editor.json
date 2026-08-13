@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "name": "Clipboard to Editor",
+  "description": "Dumps whatever is on the clipboard into a fresh Notepad window and saves it. Useful for grabbing a snippet out of a browser without losing it.",
+  "trigger": {
+    "type": "hotkey",
+    "keys": ["CTRL", "ALT", "N"]
+  },
+  "variables": [
+    { "name": "captured", "type": "text" }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "get_clipboard",
+      "into": "captured"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "comment": "Nothing to paste is a user error, not a failure worth a log entry.",
+      "condition": { "type": "variable_empty", "variable": "captured" },
+      "then": [
+        { "id": "s2a", "type": "notify", "message": "Clipboard is empty.", "level": "warning" },
+        { "id": "s2b", "type": "abort", "reason": "Nothing on the clipboard to capture." }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "launch_process",
+      "app": "notepad",
+      "expect": {
+        "type": "window_exists",
+        "selector": { "processName": "notepad" },
+        "withinMs": 10000
+      }
+    },
+    {
+      "id": "s4",
+      "type": "wait_for_window",
+      "comment": "The window can exist before it is ready to accept input.",
+      "selector": { "processName": "notepad" },
+      "timeoutMs": 10000
+    },
+    {
+      "id": "s5",
+      "type": "focus_window",
+      "selector": { "processName": "notepad" },
+      "expect": {
+        "type": "foreground_process_is",
+        "processName": "notepad",
+        "withinMs": 5000
+      }
+    },
+    {
+      "id": "s6",
+      "type": "type_text",
+      "comment": "Synthetic input is a last resort here — Notepad has no CLI for content. It will silently do nothing if Notepad somehow runs elevated.",
+      "text": "${captured}"
+    },
+    {
+      "id": "s7",
+      "type": "send_keys",
+      "comment": "Open the save dialog and leave it for the user to name the file.",
+      "keys": ["CTRL", "S"]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "name": "Project Launcher",
+  "description": "Lists the folders under Projects, lets you fuzzy-search for one, and opens it in VS Code.",
+  "trigger": {
+    "type": "hotkey",
+    "keys": ["CTRL", "ALT", "P"]
+  },
+  "variables": [
+    { "name": "candidates", "type": "pathList" },
+    { "name": "selected", "type": "path" }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "list_directories",
+      "comment": "Immediate children only — one folder per project.",
+      "path": "C:\\Users\\vaibhav\\Desktop\\Projects",
+      "depth": 1,
+      "into": "candidates"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "comment": "Fail loudly rather than showing an empty picker.",
+      "condition": { "type": "variable_empty", "variable": "candidates" },
+      "then": [
+        {
+          "id": "s2a",
+          "type": "notify",
+          "message": "No projects found under Desktop\\Projects.",
+          "level": "warning"
+        },
+        {
+          "id": "s2b",
+          "type": "abort",
+          "reason": "Projects directory is empty or unreadable."
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "show_picker",
+      "source": "candidates",
+      "prompt": "Open which project?",
+      "into": "selected",
+      "timeoutMs": 30000,
+      "onError": "abort"
+    },
+    {
+      "id": "s4",
+      "type": "launch_process",
+      "comment": "Resolve VS Code from the app registry rather than hardcoding a path.",
+      "app": "vscode",
+      "argv": ["${selected}"],
+      "expect": {
+        "type": "window_exists",
+        "selector": { "processName": "Code", "titleContains": "${selected.name}" },
+        "withinMs": 20000
+      }
+    }
+  ]
+}

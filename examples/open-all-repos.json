@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "name": "Open All Repos",
+  "description": "Walks the Projects folder and opens every directory that is actually a git repo in VS Code, skipping loose folders. Capped so a large Projects folder cannot open fifty windows.",
+  "trigger": {
+    "type": "hotkey",
+    "keys": ["CTRL", "ALT", "R"]
+  },
+  "variables": [
+    { "name": "candidates", "type": "pathList" },
+    { "name": "project", "type": "path" },
+    { "name": "isRepo", "type": "boolean" }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "list_directories",
+      "path": "C:\\Users\\vaibhav\\Desktop\\Projects",
+      "depth": 1,
+      "into": "candidates"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "condition": { "type": "variable_empty", "variable": "candidates" },
+      "then": [
+        { "id": "s2a", "type": "abort", "reason": "No folders under the Projects directory." }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "foreach",
+      "comment": "Bounded deliberately: a wide Projects folder should not spawn an unbounded number of editor windows.",
+      "source": "candidates",
+      "itemVariable": "project",
+      "maxIterations": 8,
+      "body": [
+        {
+          "id": "s3a",
+          "type": "path_exists",
+          "comment": "Presence of .git is what distinguishes a repo from a scratch folder.",
+          "path": "${project}\\.git",
+          "into": "isRepo"
+        },
+        {
+          "id": "s3b",
+          "type": "if",
+          "comment": "This is the deepest legal nesting — foreach, then if, then leaf actions only.",
+          "condition": { "type": "variable_equals", "variable": "isRepo", "value": "true" },
+          "then": [
+            {
+              "id": "s3b1",
+              "type": "launch_process",
+              "app": "vscode",
+              "argv": ["${project}"],
+              "onError": "continue"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "type": "notify",
+      "message": "Opened all repos under Projects.",
+      "level": "info"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "name": "Close Distractions",
+  "description": "Asks the chat apps to close, gives them a moment to save, force-kills anything that ignored the request, then maximises the editor.",
+  "trigger": {
+    "type": "hotkey",
+    "keys": ["CTRL", "ALT", "X"]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "close_window",
+      "comment": "Ask nicely first so the app can save state — this is why close_window is preferred over terminate_process.",
+      "selector": { "processName": "slack" },
+      "onError": "continue"
+    },
+    {
+      "id": "s2",
+      "type": "close_window",
+      "selector": { "processName": "Discord" },
+      "onError": "continue"
+    },
+    {
+      "id": "s3",
+      "type": "wait",
+      "comment": "Nothing observable to wait on here: we are waiting for an app to decide whether to exit, and it may legitimately show a save prompt instead.",
+      "durationMs": 2500
+    },
+    {
+      "id": "s4",
+      "type": "if",
+      "comment": "Only force-kill what ignored the close request.",
+      "condition": { "type": "process_running", "processName": "slack" },
+      "then": [
+        {
+          "id": "s4a",
+          "type": "terminate_process",
+          "processName": "slack",
+          "force": true,
+          "onError": "continue"
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "type": "if",
+      "condition": { "type": "process_running", "processName": "Code" },
+      "then": [
+        { "id": "s5a", "type": "maximize_window", "selector": { "processName": "Code" } },
+        {
+          "id": "s5b",
+          "type": "focus_window",
+          "selector": { "processName": "Code" },
+          "expect": {
+            "type": "foreground_process_is",
+            "processName": "Code",
+            "withinMs": 5000
+          }
+        }
+      ]
+    },
+    {
+      "id": "s6",
+      "type": "notify",
+      "message": "Distractions closed.",
+      "level": "info"
+    }
+  ]
+}
