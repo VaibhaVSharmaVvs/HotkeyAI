@@ -16,7 +16,8 @@ Goal 1 of 4, early. Nothing runs yet.
 | ✅ | DSL schema — 25 primitives, hand-authored, validated, no `$ref` cycles |
 | ✅ | Eight reference automations, **100% action-type coverage** |
 | ✅ | Schema checks + generated `docs/capabilities.md`, gated in CI |
-| ⬜ | `HotkeyAI.Core` — records, validator, policy layer, conformance test |
+| ✅ | `HotkeyAI.Core` — 25 records, schema validator, bidirectional conformance test |
+| ⬜ | `HotkeyAI.Core` — policy layer (numeric bounds, allowed roots, variable dataflow) |
 | ⬜ | `HotkeyAI.Agent` — hotkey pump, executor, observer, store |
 | ⬜ | `HotkeyAI.Cli` — `validate` / `explain` / `import` / `run` / `logs` |
 | ⬜ | `HotkeyAI.Ui` — automation list, plan preview, picker overlay |

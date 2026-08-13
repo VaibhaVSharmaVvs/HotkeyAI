@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>HotkeyAI.Core</RootNamespace>
+    <!-- Deliberately plain net10.0, not net10.0-windows: Core must be testable without a
+         desktop session. Anything needing Win32 belongs in Agent. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The schema is embedded rather than read from disk, so Core always validates against
+         the exact contract it was compiled against and cannot be pointed at a stale or
+         edited copy at runtime. There is still only one file: this links the repo-root
+         schema, it does not duplicate it. -->
+    <EmbeddedResource Include="..\..\schema\hotkeyai-dsl-v1.schema.json"
+                      LogicalName="HotkeyAI.Core.hotkeyai-dsl-v1.schema.json" />
+  </ItemGroup>
+
+</Project>

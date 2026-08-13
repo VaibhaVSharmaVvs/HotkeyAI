@@ -14,7 +14,7 @@ This plan covers V1 only, under four decisions taken up front:
 | Decision | Choice |
 |---|---|
 | V1 scope | **Deterministic core only** — no UI Automation, no mouse coordinates |
-| Stack | **C# / .NET 9 + WPF**, split into a tray engine process and a UI process |
+| Stack | **C# / .NET 10 (LTS) + WPF**, split into a tray engine process and a UI process |
 | V1 planner | **None in-app.** Author DSL externally with Claude Code; app validates and executes |
 | V2 planner | **API mode** — frontier model with JSON-schema structured output |
 | DSL contract | **Schema-first.** Hand-authored JSON Schema is the source of truth; C# and docs conform to it |

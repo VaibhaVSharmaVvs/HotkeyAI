@@ -4,8 +4,9 @@ Windows tray app: a global hotkey fires a validated automation plan, which the e
 executes, verifies, and can roll back. See `PLAN.md` for the full design and `Concept.txt`
 for the original product concept.
 
-**Stack:** C# / .NET 9, WPF. Two processes — `HotkeyAI.Agent` (tray, always resident, owns the
-hotkey pump) and `HotkeyAI.Ui` (launched on demand, talks to the agent over a named pipe).
+**Stack:** C# / .NET 10 (LTS), WPF. Two processes — `HotkeyAI.Agent` (tray, always resident,
+owns the hotkey pump) and `HotkeyAI.Ui` (launched on demand, talks to the agent over a named
+pipe). `HotkeyAI.Core` targets plain `net10.0` with no Windows dependencies.
 
 ## The one thing to understand
 

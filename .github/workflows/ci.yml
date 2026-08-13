@@ -1,8 +1,7 @@
-name: schema
+name: ci
 
 on:
   push:
-    paths: ['schema/**', 'examples/**', 'docs/capabilities.md', 'tools/schema-checks/**', '.github/workflows/schema.yml']
   pull_request:
   workflow_dispatch:
 
@@ -32,3 +31,24 @@ jobs:
       # docs/capabilities.md is generated. Fails if it has drifted from the schema.
       - name: capabilities doc is current
         run: python tools/schema-checks/gen_capabilities.py . --check
+
+  build-and-test:
+    # Core targets plain net10.0 with no Windows dependencies, so it must build and test on
+    # Linux. If this job ever needs windows-latest, something Win32 has leaked out of Agent.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - run: dotnet restore
+
+      # Warnings are errors (Directory.Build.props) — a validator that compiles with
+      # warnings is a validator with holes in it.
+      - run: dotnet build --no-restore --configuration Release
+
+      # Includes the bidirectional schema/record conformance test and the round-trip tests
+      # over every reference automation.
+      - run: dotnet test --no-build --configuration Release --verbosity normal
