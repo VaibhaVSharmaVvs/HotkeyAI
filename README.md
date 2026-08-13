@@ -17,10 +17,18 @@ Goal 1 of 4, early. Nothing runs yet.
 | ✅ | Eight reference automations, **100% action-type coverage** |
 | ✅ | Schema checks + generated `docs/capabilities.md`, gated in CI |
 | ✅ | `HotkeyAI.Core` — 25 records, schema validator, bidirectional conformance test |
+| ✅ | `HotkeyAI.Cli` — `validate` (with `--json`), `explain`, `schema` |
 | ⬜ | `HotkeyAI.Core` — policy layer (numeric bounds, allowed roots, variable dataflow) |
 | ⬜ | `HotkeyAI.Agent` — hotkey pump, executor, observer, store |
-| ⬜ | `HotkeyAI.Cli` — `validate` / `explain` / `import` / `run` / `logs` |
+| ⬜ | `HotkeyAI.Cli` — `import` / `run` / `logs` (need the agent) |
 | ⬜ | `HotkeyAI.Ui` — automation list, plan preview, picker overlay |
+
+You can author and inspect automations today:
+
+```powershell
+dotnet run --project src/HotkeyAI.Cli -- explain  examples/project-launcher.json
+dotnet run --project src/HotkeyAI.Cli -- validate examples/project-launcher.json --json
+```
 
 ## How it works
 

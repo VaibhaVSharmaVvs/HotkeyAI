@@ -30,11 +30,18 @@ is the readable summary of the same thing.
    exists).
 3. **Validate before claiming it works:**
    ```powershell
-   python tools/schema-checks/validate_examples.py .
+   dotnet run --project src/HotkeyAI.Cli -- validate <file>
+   dotnet run --project src/HotkeyAI.Cli -- validate <file> --json   # for a fix loop
    ```
-   Once the .NET solution exists, `HotkeyAI.Cli validate <file>` is the equivalent and also
-   runs the policy layer.
-4. Iterate on validator errors until clean. Do not hand-wave a plan as correct without running
+   Errors carry a JSON Pointer and say what to change. Exit codes: `0` valid, `1` invalid,
+   `2` bad usage or unreadable file — so a loop can branch on them without parsing output.
+4. **Check the plan says what you meant**, not just that it parses:
+   ```powershell
+   dotnet run --project src/HotkeyAI.Cli -- explain <file>
+   ```
+   This prints the same preview the UI will show, including which actions are `(unverified)`.
+   An automation that validates but explains wrongly is still wrong.
+5. Iterate on validator errors until clean. Do not hand-wave a plan as correct without running
    the validator — schema validity is cheap to check and expensive to guess at.
 
 ### Rules that matter when writing plans
@@ -89,8 +96,21 @@ tests/      HotkeyAI.Core.Tests            conformance, validator, policy layer
 ## Commands
 
 ```powershell
+# authoring an automation
+dotnet run --project src/HotkeyAI.Cli -- validate examples/my-plan.json
+dotnet run --project src/HotkeyAI.Cli -- validate examples/my-plan.json --json
+dotnet run --project src/HotkeyAI.Cli -- explain  examples/my-plan.json
+dotnet run --project src/HotkeyAI.Cli -- schema           # print the contract
+
+# whole-repo checks (both run in CI)
 python tools/schema-checks/check_schema.py schema/hotkeyai-dsl-v1.schema.json
 python tools/schema-checks/validate_examples.py .
+python tools/schema-checks/gen_capabilities.py . --check
 dotnet build
 dotnet test
 ```
+
+Adding a primitive means all of: schema (with a `description`) → the C# record and its
+`[DslType]` → a case in `PlanRenderer.DescribeAction` → an example that exercises it →
+regenerate `docs/capabilities.md`. Every one of those is gated by a test or a CI check, so
+skipping a step fails the build rather than shipping a half-added primitive.

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>HotkeyAI.Cli</RootNamespace>
+    <AssemblyName>hotkeyai</AssemblyName>
+    <!-- Plain net10.0: the CLI reads and validates plans, which is Core's job and needs no
+         desktop session. Verbs that talk to the running agent will use a named pipe, which
+         is also cross-platform. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HotkeyAI.Core\HotkeyAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

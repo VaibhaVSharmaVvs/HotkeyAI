@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/HotkeyAI.Cli/HotkeyAI.Cli.csproj" />
     <Project Path="src/HotkeyAI.Core/HotkeyAI.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
