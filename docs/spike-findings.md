@@ -151,6 +151,77 @@ title length gave 10 windows — a clean, usable set with no obvious false negat
 Windows Terminal, so the selectors the examples use for those were not exercised against a live
 window.
 
+## D. The primitive-exercising pass
+
+Phase 0 established that the *approach* works. This pass ran the primitives themselves against a
+real desktop for the first time, via `hotkeyai run` on purpose-built probe plans. Before it, four
+of twenty-five primitives had ever executed. It found five defects, four of which were invisible —
+the engine reported success while doing nothing at all.
+
+**`GetWindowTextLength` did not exist.** Every window operation threw
+`EntryPointNotFoundException` on the first call, because `LibraryImport` is *exact-spelling
+always*, unlike `DllImport`, which silently appended the `W` suffix. One missing `EntryPoint` on an
+A/W pair took out focus, move, minimise, maximise, close and `wait_for_window` together. The rest
+of the P/Invoke surface was audited; this was the only one.
+
+**The `INPUT` struct was 32 bytes; Windows requires 40 on x64.** `InputUnion` must be sized to its
+largest member, `MOUSEINPUT` (32 bytes), and was sized to `KEYBDINPUT` (24). `SendInput` compares
+its `cbSize` argument against its own idea of the struct and, on a mismatch, injects nothing,
+returns 0 and sets no useful error. **Every keystroke the app could send was silently discarded.**
+
+**`SendInput`'s return value was discarded**, which is why the above was invisible: the engine
+logged "Sent Ctrl+C" for keystrokes that never existed. This is the more important of the two
+fixes, because it also covers the failure this project already knew about — synthetic input aimed
+at a higher-integrity window — and every future cause. It is now the regression guard for the
+struct size as well, since a wrong `cbSize` presents as a short count.
+
+**`SetForegroundWindow` was called and its result ignored.** Windows' foreground lock refuses the
+call unless the process owns the foreground or received the last input event. The agent normally
+qualifies, because handling `WM_HOTKEY` counts — but nothing else does, so the same plan run from
+the CLI silently failed to raise the window and sent its keystrokes to whatever *did* have focus.
+`FocusAsync` now falls back to attaching to the foreground thread's input queue, and always
+detaches.
+
+**`#32770` was on the credential-class blocklist.** It is the class of *every* standard Win32
+dialog — Run, Save As, Find, most installers — not of credential prompts. Safety control 3 refused
+to type into any of them and told the user a password field had focus, which was untrue. Found by
+typing into the Run dialog. Removed: a guard that fires on the common case teaches people to
+distrust it, which costs more than the rare dialog it caught.
+
+### Typing has to be paced, and the reason is not obvious
+
+Sending a string as one `SendInput` batch delivers corrupted text. Measured against Notepad,
+`"HotkeyAI probe OK"` arrived as `"HotkeyAI KKKKKKKK"` and `"git checkout -b feature/my-branch"`
+as `"git kkkkkout hhhhhhhhhhhhhhhhhhhh"`. Runs of characters collapse onto a later character of
+the run, corruption reliably begins after a space, and **the same plan produces different wrong
+answers on different runs** — so it is a race in the target's input processing, not a malformed
+event.
+
+Both halves of the fix were tested alone and neither is sufficient: one batch corrupts, and
+per-character calls with no delay corrupt too. Only per-character *plus* a 5 ms interval is clean,
+9 runs out of 9.
+
+Two methodology notes, both of which nearly produced a wrong conclusion:
+
+- The first hypothesis — "the batch outruns the target's queue, so send per-character" — was
+  written up as a fix *before* being tested. It was wrong; per-character alone still corrupts. The
+  comment claiming it worked was in the source for several minutes.
+- The corruption looked Notepad-specific, because typing into the Run dialog was clean. It is not:
+  the Run-dialog test passed for an unrelated reason, and Notepad turned out to be fine too once
+  paced. Two independent bugs in the same path made each other's symptoms look like a third.
+
+### What this says about "unverified"
+
+Four of the five defects were silent. The engine's own transcript said `Succeeded` for a dead
+input path, a window that never came forward, and text that arrived mangled — because nothing
+checked a return value and the actions carried no postcondition.
+
+That is the strongest available argument for the `(unverified)` marker being shown to users rather
+than hidden. It is also an argument for widening what can be verified: `clipboard_matches` is what
+caught the typing corruption, and it only caught it because the probe had a postcondition to check
+against. An action with no postcondition is not "probably fine" — measured here, it is where every
+silent failure lived.
+
 ## Methodology note
 
 The first version of the availability sweep reported all 26 `CTRL+SHIFT` combinations free —

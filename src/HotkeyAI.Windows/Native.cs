@@ -36,7 +36,10 @@ internal static partial class Native
     [LibraryImport("user32.dll", EntryPoint = "GetWindowTextW", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial int GetWindowText(nint window, [Out] char[] text, int max);
 
-    [LibraryImport("user32.dll")]
+    // EntryPoint is mandatory for every A/W pair. LibraryImport is exact-spelling always,
+    // unlike DllImport, which defaulted to trying the "W" suffix — so a missing EntryPoint here
+    // compiles cleanly and then throws EntryPointNotFoundException the first time it runs.
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowTextLengthW")]
     internal static partial int GetWindowTextLength(nint window);
 
     [LibraryImport("user32.dll", EntryPoint = "GetClassNameW", StringMarshalling = StringMarshalling.Utf16)]
@@ -51,6 +54,15 @@ internal static partial class Native
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool SetForegroundWindow(nint window);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool BringWindowToTop(nint window);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool AttachThreadInput(
+        uint attachTo, uint attachFrom, [MarshalAs(UnmanagedType.Bool)] bool attach);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -125,7 +137,12 @@ internal static partial class Native
         [FieldOffset(0)]
         public KeyboardInput Keyboard;
 
-        // Padding so the union matches the largest member (MOUSEINPUT) on 64-bit.
+        // Padding so the union matches the largest member, MOUSEINPUT, which is 32 bytes on
+        // x64: two LONGs, three DWORDs, four bytes of alignment, then a ULONG_PTR. Getting this
+        // wrong is invisible rather than fatal — SendInput compares its cbSize argument against
+        // its own idea of the struct, and on a mismatch it sends nothing, returns 0 and sets no
+        // useful error. KEYBDINPUT is only 24 bytes, so a union sized to it looks perfectly
+        // reasonable and silently disables every keystroke the app can send.
         [FieldOffset(0)]
         private readonly long padding0;
 
@@ -134,6 +151,9 @@ internal static partial class Native
 
         [FieldOffset(16)]
         private readonly long padding2;
+
+        [FieldOffset(24)]
+        private readonly long padding3;
     }
 
     [StructLayout(LayoutKind.Sequential)]

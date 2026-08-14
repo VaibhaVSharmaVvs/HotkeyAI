@@ -66,10 +66,52 @@ public sealed class WindowsWindows : IWindows
             Native.ShowWindow(handle, Native.SW_RESTORE);
         }
 
-        // SetForegroundWindow is subject to Windows' foreground lock: it can refuse when the
-        // calling process did not last receive input. The engine's postcondition
-        // (foreground_process_is) is what catches that, which is exactly why it exists.
-        Native.SetForegroundWindow(handle);
+        // SetForegroundWindow is subject to Windows' foreground lock: it refuses unless the
+        // calling process owns the foreground or received the last input event. The agent
+        // normally satisfies that, because handling WM_HOTKEY counts as receiving input — but
+        // nothing else does. Running the same plan from the CLI, or from anything the user did
+        // not just interact with, the call is refused and the window never comes forward.
+        if (Native.SetForegroundWindow(handle))
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        // The documented way out: attach our input queue to the foreground window's thread, so
+        // that for the duration of the attachment we count as the foreground thread and the
+        // restriction no longer applies. Attaching is why this works; BringWindowToTop alone
+        // raises the window without giving it focus.
+        var foreground = Native.GetForegroundWindow();
+        if (foreground == 0)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        var us = Native.GetCurrentThreadId();
+        var them = Native.GetWindowThreadProcessId(foreground, out _);
+
+        if (them == 0 || them == us)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        if (!Native.AttachThreadInput(us, them, attach: true))
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        try
+        {
+            Native.BringWindowToTop(handle);
+            Native.SetForegroundWindow(handle);
+        }
+        finally
+        {
+            // Always detach. A thread left attached to another process's input queue shares its
+            // focus and keyboard state for as long as the agent lives, which is a far worse
+            // outcome than a window that failed to come forward.
+            Native.AttachThreadInput(us, them, attach: false);
+        }
+
         return ValueTask.CompletedTask;
     }
 

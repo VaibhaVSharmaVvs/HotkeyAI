@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using HotkeyAI.Core.Dsl;
 using HotkeyAI.Engine.Platform;
 
@@ -11,12 +13,20 @@ public sealed class WindowsInput : IInput
     /// Safety control 3. UAC consent runs on a separate secure desktop, so an unelevated process
     /// usually cannot even see it — <see cref="CheckHazardAsync"/> treats an unreadable
     /// foreground window as a hazard for exactly that reason.
+    /// <para>
+    /// <c>#32770</c> was on this list and has been removed. It is the class of every standard
+    /// Win32 dialog — Run, Save As, Find, most installers — not of credential prompts
+    /// specifically, so it refused input to ordinary dialogs and told the user a password field
+    /// had focus, which was simply untrue. Found by typing into the Run dialog. A guard that
+    /// fires on the common case teaches people to distrust it, which costs more safety than the
+    /// rare credential dialog it caught. The specific credential classes below, plus the
+    /// integrity check in <see cref="CheckHazardAsync"/>, are what actually carry this control.
+    /// </para>
     /// </remarks>
     private static readonly HashSet<string> CredentialClasses =
         new(StringComparer.OrdinalIgnoreCase)
         {
             "Credential Dialog Xaml Host",
-            "#32770",
             "ConsentUI",
         };
 
@@ -35,6 +45,9 @@ public sealed class WindowsInput : IInput
     };
 
     private static readonly Dictionary<KeyName, ushort> VirtualKeys = BuildKeyMap();
+
+    /// <summary>Delay between typed characters. See <see cref="TypeTextAsync"/> for why.</summary>
+    private const int TypingIntervalMs = 5;
 
     public ValueTask<InputHazard> CheckHazardAsync(CancellationToken cancellationToken)
     {
@@ -109,15 +122,25 @@ public sealed class WindowsInput : IInput
 
         // Unicode scan codes rather than virtual keys, so the text arrives as written whatever
         // keyboard layout is active. A plan typing "£" must not depend on the user's layout.
-        var sequence = new List<Native.Input>(text.Length * 2);
-
+        //
+        // Typed one character at a time, paced. Sending the whole string as a single SendInput
+        // batch delivers corrupted text: measured against Windows 11 Notepad, "HotkeyAI probe OK"
+        // arrived as "HotkeyAI KKKKKKKK" and "git checkout -b feature/my-branch" as
+        // "git kkkkkout hhhhhhhhhhhhhhhhhhhh". Runs of characters collapse onto a later character
+        // of the run, and the result varies between identical runs, so this is a race in the
+        // target's input processing rather than anything wrong with the events themselves.
+        //
+        // Both halves are load-bearing and each was tested alone: one batch corrupts, and
+        // per-character calls with no delay corrupt too. Only pacing them fixes it. The cost is
+        // 5 ms per character — a 60-character string takes a third of a second, which is
+        // invisible next to the application launches these plans usually wait on.
         foreach (var character in text)
         {
-            sequence.Add(Unicode(character, down: true));
-            sequence.Add(Unicode(character, down: false));
+            cancellationToken.ThrowIfCancellationRequested();
+            Send([Unicode(character, down: true), Unicode(character, down: false)]);
+            Thread.Sleep(TypingIntervalMs);
         }
 
-        Send(sequence);
         return ValueTask.CompletedTask;
     }
 
@@ -175,8 +198,22 @@ public sealed class WindowsInput : IInput
         }
 
         var array = inputs.ToArray();
-        Native.SendInput(
-            (uint)array.Length, array, System.Runtime.InteropServices.Marshal.SizeOf<Native.Input>());
+        var sent = Native.SendInput((uint)array.Length, array, Marshal.SizeOf<Native.Input>());
+
+        // Never ignore this. SendInput reports how many events it injected, and a short count is
+        // the only signal that anything went wrong — the call does not throw, and the engine
+        // would otherwise log "Sent Ctrl+C" for a keystroke that was never delivered. A wrong
+        // INPUT size, a UIPI block from a higher-integrity foreground window, and the low-level
+        // hook chain rejecting the batch all present identically as a silent short count.
+        if (sent != array.Length)
+        {
+            var error = Marshal.GetLastWin32Error();
+            throw new Win32Exception(
+                error,
+                $"The system accepted {sent} of {array.Length} input events. This usually means "
+                + "the foreground window is running at a higher integrity level and is rejecting "
+                + "synthetic input, which Windows does not otherwise report.");
+        }
     }
 
     private static Native.Input Key(ushort virtualKey, bool down) => new()
