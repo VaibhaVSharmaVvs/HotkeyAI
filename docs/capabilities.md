@@ -77,7 +77,7 @@ Bring a window to the foreground and give it keyboard focus. Required before sen
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice. |
+| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice, and the only one that reliably distinguishes windows of apps that open several. Two traps worth knowing: matching processName alone for 'explorer' also matches the desktop shell window, so pair it with a titleContains naming the folder; and a Store or UWP app such as Settings runs inside a shared host process, so its processName is the host's rather than the app's — match those on title. |
 
 ### `minimize_window`
 
@@ -85,7 +85,7 @@ Minimize a window.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice. |
+| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice, and the only one that reliably distinguishes windows of apps that open several. Two traps worth knowing: matching processName alone for 'explorer' also matches the desktop shell window, so pair it with a titleContains naming the folder; and a Store or UWP app such as Settings runs inside a shared host process, so its processName is the host's rather than the app's — match those on title. |
 
 ### `maximize_window`
 
@@ -93,7 +93,7 @@ Maximize a window.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice. |
+| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice, and the only one that reliably distinguishes windows of apps that open several. Two traps worth knowing: matching processName alone for 'explorer' also matches the desktop shell window, so pair it with a titleContains naming the folder; and a Store or UWP app such as Settings runs inside a shared host process, so its processName is the host's rather than the app's — match those on title. |
 
 ### `move_window`
 
@@ -101,7 +101,7 @@ Move or resize a window to a named position, optionally on a specific monitor. N
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice. |
+| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice, and the only one that reliably distinguishes windows of apps that open several. Two traps worth knowing: matching processName alone for 'explorer' also matches the desktop shell window, so pair it with a titleContains naming the folder; and a Store or UWP app such as Settings runs inside a shared host process, so its processName is the host's rather than the app's — match those on title. |
 | `position` | `left_half` \| `right_half` \| `top_half` \| `bottom_half` \| `maximized` \| `centered` \| `top_left_quarter` \| `top_right_quarter` \| `bottom_left_quarter` \| `bottom_right_quarter` | yes | Target layout position. |
 | `monitor` | `string` | no | Which monitor to place the window on: 'primary', 'secondary', or a 1-based index as a string such as '2'. Defaults to the monitor the window is already on. |
 
@@ -111,7 +111,7 @@ Ask a window to close, as if the user clicked its close button. The application 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice. |
+| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice, and the only one that reliably distinguishes windows of apps that open several. Two traps worth knowing: matching processName alone for 'explorer' also matches the desktop shell window, so pair it with a titleContains naming the folder; and a Store or UWP app such as Settings runs inside a shared host process, so its processName is the host's rather than the app's — match those on title. |
 
 ### `wait_for_window`
 
@@ -119,7 +119,7 @@ Block until a matching window exists. Use after launching an application, before
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice. |
+| `selector` | `WindowSelector` | yes | Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice, and the only one that reliably distinguishes windows of apps that open several. Two traps worth knowing: matching processName alone for 'explorer' also matches the desktop shell window, so pair it with a titleContains naming the folder; and a Store or UWP app such as Settings runs inside a shared host process, so its processName is the host's rather than the app's — match those on title. |
 
 ## Input
 

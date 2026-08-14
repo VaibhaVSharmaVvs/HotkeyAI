@@ -4,7 +4,7 @@
   "description": "Sets up the morning workspace: editor on the left, browser on the right, Slack running. Reuses anything already open instead of launching a second copy.",
   "trigger": {
     "type": "hotkey",
-    "keys": ["CTRL", "SHIFT", "W"]
+    "keys": ["CTRL", "ALT", "W"]
   },
   "actions": [
     {

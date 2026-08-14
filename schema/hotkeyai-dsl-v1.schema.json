@@ -100,7 +100,7 @@
     },
 
     "WindowSelector": {
-      "description": "Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice.",
+      "description": "Identifies a target window. Supply at least one matching field; when several are given, all must match. Prefer processName plus titleContains — it is the most reliable combination in practice, and the only one that reliably distinguishes windows of apps that open several. Two traps worth knowing: matching processName alone for 'explorer' also matches the desktop shell window, so pair it with a titleContains naming the folder; and a Store or UWP app such as Settings runs inside a shared host process, so its processName is the host's rather than the app's — match those on title.",
       "type": "object",
       "additionalProperties": false,
       "anyOf": [
@@ -123,7 +123,7 @@
           "type": "string"
         },
         "className": {
-          "description": "Win32 window class name. Rarely needed; use when title and process are ambiguous.",
+          "description": "Win32 window class name. Almost never the right choice: every Chromium and Electron application shares the class 'Chrome_WidgetWin_1', so it cannot tell a browser from an editor from a chat app. Use it only for a classic Win32 application whose title and process are genuinely ambiguous.",
           "type": "string"
         }
       }

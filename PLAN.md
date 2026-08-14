@@ -432,6 +432,30 @@ prompts and logs are PII/confidential-adjacent under SOC2/ISO 27001 obligations.
 ProtrackLite hierarchy. Estimates assume one developer working focused sessions; sequencing
 guidance, not commitments. Total ≈8 weeks, down from ~10 now that the planner is out of V1.
 
+### 🎯 Goal 0 — De-risk the unknowns — **DONE**, see `docs/spike-findings.md`
+
+Run late, after the engine rather than before it. Three findings changed the work:
+
+- **A bare-key hotkey registers successfully.** Windows will let an app swallow `P`
+  system-wide, so the policy rule requiring a modifier is load-bearing rather than tidiness.
+- **`CTRL+SHIFT+W` cannot register on this machine**, and that was `work-environment.json`'s
+  trigger — a first-run example whose hotkey fails is the first thing a new user meets. Changed
+  to `CTRL+ALT+W`; a sweep script now checks every shipped example.
+- **Elevated-window detection works via the denial**, not just the token: `OpenProcess`
+  returning `ERROR_ACCESS_DENIED` is itself proof of higher integrity. Both paths verified.
+- **`processName: "explorer"` matches the desktop shell**, and `className` is worthless for
+  Chromium apps (Chrome, Cursor and Teams all report `Chrome_WidgetWin_1`). Fed back into the
+  schema descriptions. **The agent's window finder must exclude `Progman` and `WorkerW`**, or
+  automations will act on the desktop.
+
+Still unverified: that `SendInput` into an elevated window fails *silently*. Detection is
+proven, the silence is not — no elevated GUI window was running and creating one needs a UAC
+prompt a person must click. Harmless, since the engine refuses before sending, but it should not
+be written up as observed.
+
+<details>
+<summary>Original plan for this goal</summary>
+
 ### 🎯 Goal 0 — De-risk the unknowns (≈3 days)
 
 Three assumptions, three throwaway spikes.
@@ -444,6 +468,8 @@ Three assumptions, three throwaway spikes.
   Code, Explorer, and a browser.
 
 📌 Deliverable: a one-page findings note. Any spike that fails changes the plan.
+
+</details>
 
 ### 🎯 Goal 1 — Engine + authoring bridge (≈3 weeks)
 
