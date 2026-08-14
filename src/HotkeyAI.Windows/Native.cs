@@ -227,5 +227,43 @@ internal static partial class Native
         return written <= 0 ? "" : new string(buffer, 0, written);
     }
 
+    // ------------------------------- hotkeys and the message pump -------------------------------
+
+    internal const uint WM_HOTKEY = 0x0312;
+    internal const uint WM_QUIT = 0x0012;
+    internal const uint WM_NULL = 0x0000;
+    internal const int ERROR_HOTKEY_ALREADY_REGISTERED = 1409;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Msg
+    {
+        public nint Window;
+        public uint Message;
+        public nuint WParam;
+        public nint LParam;
+        public uint Time;
+        public int X;
+        public int Y;
+    }
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool RegisterHotKey(nint window, int id, uint modifiers, uint key);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool UnregisterHotKey(nint window, int id);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMessageW")]
+    internal static partial int GetMessage(out Msg message, nint window, uint filterMin, uint filterMax);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostThreadMessageW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool PostThreadMessage(
+        uint threadId, uint message, nuint wParam, nint lParam);
+
+    [LibraryImport("kernel32.dll")]
+    internal static partial uint GetCurrentThreadId();
+
     internal static StringBuilder Unused { get; } = new();
 }

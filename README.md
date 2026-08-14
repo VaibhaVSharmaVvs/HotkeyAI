@@ -9,7 +9,8 @@ if you're authoring automations.
 
 ## Status
 
-Goal 1 of 4. Automations execute; the hotkey that fires them is next.
+Goal 1 of 4. Hotkeys fire automations. Remaining: the tray UI, the authoring
+watcher, and autostart.
 
 | | |
 |---|---|
@@ -21,7 +22,10 @@ Goal 1 of 4. Automations execute; the hotkey that fires them is next.
 | ✅ | `HotkeyAI.Core` — policy layer (bounds, allowed roots, variable dataflow) |
 | ✅ | `HotkeyAI.Engine` — executor, observer, safety controls, all 25 primitives |
 | ✅ | `HotkeyAI.Windows` — Win32 `IDesktop`: processes, windows, input, files, clipboard |
-| ⬜ | `HotkeyAI.Agent` — hotkey pump, tray, store, TOFU gate |
+| ✅ | `HotkeyAI.Windows` — hotkey pump with `MOD_NOREPEAT` and honest failure reporting |
+| ✅ | `HotkeyAI.Engine` — store with the trust-on-first-use gate |
+| ✅ | `HotkeyAI.Agent` — resident host, panic key, single-instance guard |
+| ⬜ | `HotkeyAI.Agent` — tray icon, folder watcher, Task Scheduler autostart |
 | ⬜ | `HotkeyAI.Cli` — `import` / `logs` (need the agent) |
 | ⬜ | `HotkeyAI.Ui` — automation list, plan preview, picker overlay |
 
@@ -35,7 +39,16 @@ dotnet run --project src/HotkeyAI.Cli -- run examples/project-launcher.json --dr
 dotnet run --project src/HotkeyAI.Cli -- run examples/project-launcher.json
 ```
 
-Automations execute today; only the hotkey that fires them is missing.
+And run the agent, which is what makes hotkeys live:
+
+```powershell
+dotnet run --project src/HotkeyAI.Agent -- --list          # state of every automation
+dotnet run --project src/HotkeyAI.Agent -- --approve-all    # read each plan, then approve
+dotnet run --project src/HotkeyAI.Agent                     # register hotkeys and listen
+```
+
+Nothing runs until you have read the plan and approved it. Approval is granted against the
+file's contents, so editing an automation makes it inert again until you re-approve.
 
 ## How it works
 

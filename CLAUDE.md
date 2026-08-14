@@ -82,7 +82,8 @@ src/        HotkeyAI.Core                  DSL, schema, validators — no Window
             HotkeyAI.Engine                executor + safety controls, against IDesktop
             HotkeyAI.Windows               Win32 IDesktop -- the only project using Win32
             HotkeyAI.Cli                   validate / explain / schema / apps / run
-            HotkeyAI.Agent|Ui              tray, hotkeys, store (not yet built)
+            HotkeyAI.Agent                 resident host: hotkeys, panic key, approvals
+            HotkeyAI.Ui                    plan preview, picker overlay (not yet built)
 tests/      HotkeyAI.Core.Tests            conformance, validators, error quality
             HotkeyAI.Engine.Tests          safety controls and execution, via FakeDesktop
 ```

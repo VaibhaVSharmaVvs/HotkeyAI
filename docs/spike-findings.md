@@ -76,7 +76,13 @@ it does not handle *contention*:
    is a war with another process that the user cannot see the score of.
 3. **Remember what registered last time.** The API cannot name the holder, but the app can say
    "this worked yesterday and does not today" — the diagnosis that actually helps, and the one
-   thing here the raw API cannot provide.
+   thing here the raw API cannot provide. *(Not yet implemented.)*
+4. **Refuse to start a second instance.** Added after hitting it: a second agent registers
+   nothing, and then truthfully reports every automation as "unavailable — another application
+   already holds this combination". The other application is itself. A user who launches it
+   twice would be told their automations are broken, by the process breaking them, with no hint
+   that the first copy is fine. A named mutex now refuses the second copy and says why;
+   `--list` and `--approve-all` are exempt because they only touch files.
 
 A delayed autostart trigger was on this list to lose the startup race deliberately. Under one
 manager that rationale is gone; a short delay may still be worth it for shell readiness at login,
