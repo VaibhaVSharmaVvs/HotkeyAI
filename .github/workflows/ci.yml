@@ -32,10 +32,45 @@ jobs:
       - name: capabilities doc is current
         run: python tools/schema-checks/gen_capabilities.py . --check
 
-  build-and-test:
-    # Core targets plain net10.0 with no Windows dependencies, so it must build and test on
-    # Linux. If this job ever needs windows-latest, something Win32 has leaked out of Agent.
+  # The architectural invariant, enforced rather than asserted: the DSL, both validators, the
+  # executor and every safety control must build and test with no Windows dependency at all.
+  # That is what keeps them covered by tests a contributor can run anywhere, and what stops
+  # Win32 leaking upward into the layers that make the decisions.
+  #
+  # Deliberately named projects, not the solution. HotkeyAI.Ui, .Agent and .Cli set UseWPF or
+  # UseWindowsForms, which need the Windows Desktop targeting pack — that pack does not exist on
+  # Linux, so building the whole solution here fails on the framework reference rather than on
+  # anything being wrong. The Windows job below covers those.
+  core-and-engine-on-linux:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Warnings are errors (Directory.Build.props) — a validator that compiles with
+      # warnings is a validator with holes in it.
+      - name: build Core
+        run: dotnet build src/HotkeyAI.Core --configuration Release
+
+      - name: build Engine
+        run: dotnet build src/HotkeyAI.Engine --configuration Release
+
+      # Includes the bidirectional schema/record conformance test, the round-trip tests over
+      # every reference automation, the picker's ranking, and the safety controls via FakeDesktop.
+      - name: test Core
+        run: dotnet test tests/HotkeyAI.Core.Tests --configuration Release --verbosity normal
+
+      - name: test Engine
+        run: dotnet test tests/HotkeyAI.Engine.Tests --configuration Release --verbosity normal
+
+  # Everything, including the Win32 layer, the overlays, the tray and the dashboard. This job
+  # exists because V1 ships a WPF UI; it is not a sign that Win32 has leaked. The check that
+  # nothing has leaked is that the Linux job above still passes.
+  everything-on-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -45,10 +80,6 @@ jobs:
 
       - run: dotnet restore
 
-      # Warnings are errors (Directory.Build.props) — a validator that compiles with
-      # warnings is a validator with holes in it.
       - run: dotnet build --no-restore --configuration Release
 
-      # Includes the bidirectional schema/record conformance test and the round-trip tests
-      # over every reference automation.
       - run: dotnet test --no-build --configuration Release --verbosity normal
