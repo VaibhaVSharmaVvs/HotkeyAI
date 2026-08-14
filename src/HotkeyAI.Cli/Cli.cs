@@ -2,6 +2,7 @@ using System.Text.Json;
 using HotkeyAI.Core;
 using HotkeyAI.Core.Dsl;
 using HotkeyAI.Core.Json;
+using HotkeyAI.Core.Policy;
 
 namespace HotkeyAI.Cli;
 
@@ -70,7 +71,7 @@ public static class Cli
             return ExitCode.Usage;
         }
 
-        var result = SchemaValidator.Validate(json);
+        var result = PlanValidator.Validate(json, PolicyForThisMachine());
 
         if (asJson)
         {
@@ -93,13 +94,6 @@ public static class Cli
         if (result.IsValid)
         {
             Console.WriteLine($"{Path.GetFileName(path)}: valid");
-
-            // Valid against the schema is not the same as ready to run. Say so, rather than
-            // letting "valid" imply more than it means.
-            Console.WriteLine(
-                "Note: this is structural validation only. The policy layer (numeric bounds, "
-                + "allowed roots, variable dataflow) is not yet implemented.");
-
             return ExitCode.Ok;
         }
 
@@ -168,6 +162,24 @@ public static class Cli
     }
 
     // ----------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Policy bounds for the machine running the CLI.
+    /// </summary>
+    /// <remarks>
+    /// Allowed roots default to the user's own profile. Once the agent owns settings this
+    /// should come from there rather than being inferred here, so that what the CLI accepts
+    /// and what the engine will actually run are the same thing.
+    /// </remarks>
+    private static PolicyOptions PolicyForThisMachine()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        return PolicyOptions.Default with
+        {
+            AllowedRoots = string.IsNullOrEmpty(home) ? [] : [home],
+        };
+    }
 
     private static bool TryRead(string path, out string json)
     {

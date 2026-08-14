@@ -585,6 +585,16 @@ How to know each layer works, in the order the phases produce it.
 
 ## Open items
 
+- **The executor must re-check allowed roots at run time; the policy layer is not enough.**
+  A path built from a variable — `${project}\.git` — cannot be checked before the plan runs, so
+  the policy layer refuses `launch_process` with an interpolated `path` and says why. But every
+  *other* path-taking action (`open_path`, `list_files`, `list_directories`) legitimately
+  interpolates, and their resolved values are unknown until execution. A static check that
+  interpolation can slip past is a false sense of security, not a boundary. **Safety control 2
+  is therefore only half-implemented until the executor enforces allowed roots on the resolved
+  path**, immediately before each filesystem or process operation. Do not treat "the validator
+  passed" as meaning paths are safe.
+
 - **There is no way to write a file, and it shows.** Found while writing the reference
   automations: a "capture this to a note" automation — a plausible real request — cannot be
   expressed at all. `set_clipboard` plus a `notify` telling the user to paste is the honest

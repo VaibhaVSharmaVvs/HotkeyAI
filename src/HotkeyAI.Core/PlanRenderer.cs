@@ -328,18 +328,8 @@ public static class PlanRenderer
         };
     }
 
-    /// <summary>The wire name of an enum member, taken from its JSON attribute.</summary>
     private static string Wire<TEnum>(TEnum value)
-        where TEnum : struct, Enum
-    {
-        var member = typeof(TEnum).GetField(value.ToString());
-        var attribute = member?.GetCustomAttributes(
-            typeof(System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute), false);
-
-        return attribute is [System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute a]
-            ? a.Name
-            : value.ToString();
-    }
+        where TEnum : struct, Enum => WireName.Of(value);
 
     private static string Ellipsis(string text, int max = 60) =>
         text.Length <= max ? text : string.Concat(text.AsSpan(0, max - 1), "…");

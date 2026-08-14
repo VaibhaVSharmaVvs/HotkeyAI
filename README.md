@@ -18,7 +18,7 @@ Goal 1 of 4, early. Nothing runs yet.
 | ✅ | Schema checks + generated `docs/capabilities.md`, gated in CI |
 | ✅ | `HotkeyAI.Core` — 25 records, schema validator, bidirectional conformance test |
 | ✅ | `HotkeyAI.Cli` — `validate` (with `--json`), `explain`, `schema` |
-| ⬜ | `HotkeyAI.Core` — policy layer (numeric bounds, allowed roots, variable dataflow) |
+| ✅ | `HotkeyAI.Core` — policy layer (bounds, allowed roots, variable dataflow) |
 | ⬜ | `HotkeyAI.Agent` — hotkey pump, executor, observer, store |
 | ⬜ | `HotkeyAI.Cli` — `import` / `run` / `logs` (need the agent) |
 | ⬜ | `HotkeyAI.Ui` — automation list, plan preview, picker overlay |

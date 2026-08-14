@@ -56,8 +56,14 @@ is the readable summary of the same thing.
 - **Add an `expect` wherever it is meaningful.** An action with no postcondition is reported to
   the user as unverified. Only five checks are verifiable — see `Postcondition` in the schema.
   Don't invent verification that isn't real.
-- **Declare every variable** in `variables` before using it, with the right type. Writing a
-  `pathList` and reading it as `path` is a validation error.
+- **Declare every variable** in `variables` before using it, with the right type. The policy
+  layer checks dataflow: reading an undeclared variable, reading one nothing ever writes, or
+  writing the wrong type (a `list_directories` produces a `pathList`, and picking from one
+  yields a `path`, not `text`) are all errors.
+- **Respect the numeric bounds** stated in each property's `description`. The schema cannot
+  encode them — they are enforced by the policy layer, which is why they are written down.
+- **`launch_process` with a `path` needs an allowed root**, and a path built from a variable is
+  refused because it cannot be checked before the plan runs. Prefer `app`.
 - **Nesting:** three action levels. `if`/`foreach` may contain one more `if`/`foreach`, and that
   inner one may contain leaf actions only. Deliberate limit — keeps plans statically analysable
   and the schema non-recursive.
