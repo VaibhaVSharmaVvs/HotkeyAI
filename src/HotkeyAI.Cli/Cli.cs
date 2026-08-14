@@ -55,6 +55,9 @@ public static class Cli
             "schema" => PrintSchema(),
             "apps" => ListApps(),
             "run" => RunPlanAsync(rest).GetAwaiter().GetResult(),
+            "list" => AgentCommands.List(),
+            "approve" => AgentCommands.Approve(),
+            "autostart" => AgentCommands.AutostartCommand(rest),
             "import" or "logs" => NotYetImplemented(verb),
             _ => Unknown(verb),
         };
@@ -357,6 +360,11 @@ public static class Cli
                                            Execute a plan on this machine
               hotkeyai schema                     Print the DSL schema to stdout
               hotkeyai apps                       Show which logical app names resolve here
+
+            The resident agent:
+              hotkeyai list                       Show every automation and whether it can run
+              hotkeyai approve                    Review and approve pending automations
+              hotkeyai autostart [on|off|status]  Start Hotkey AI at login
 
             Exit codes:
               0  valid / success

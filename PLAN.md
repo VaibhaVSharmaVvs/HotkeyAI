@@ -541,12 +541,19 @@ mid-flight.
   renders and decides nothing. `show_input`, the destructive-action confirm and the `notify` toast
   ship with it, since `IPrompts` is one interface and a half-implemented one would leave the agent
   reading a console that is not there.
-- ✅ WPF shell — automation list with enable/disable, hotkey capture control with live
-  availability check, and the TOFU approval prompt.
+- ✅ **Done, except hotkey capture.** WPF shell — automation list with enable/disable, and the
+  TOFU approval prompt, which shows the rendered plan before the button that grants it. Opened
+  from the tray by double-click or menu. Disabling is a separate, reversible flag rather than a
+  revocation: making someone re-approve a plan they never changed just to switch it back on would
+  turn the approval prompt into something to click past. Capturing a chord in the UI, with the
+  live availability check, is still outstanding — chords come from the plan's JSON today.
 - ✅ Plan preview — human-readable step list with `unverified` tags rendered honestly. Shared
   renderer with `cli explain`, so the two can't disagree.
-- ✅ DSL editor with inline validation errors and snippet insertion for each primitive. Not an
-  NL surface — a decent JSON editing experience for when you'd rather not leave the app.
+- ✅ **Partly done.** The dashboard has a paste-and-check surface: describe an automation, copy a
+  prompt for Claude Code, paste the JSON back, and check, preview and save it without leaving the
+  window. That is the V1 planner made explicit — and the exact seam V2 replaces, since the prompt
+  it builds is what the API call will send. A full editor with inline errors and snippets is
+  still outstanding.
 
 **Exit criterion:** an unsigned automation dropped in the folder surfaces an approval prompt
 showing the correct rendered plan, and can be enabled, run, and disabled from the UI.

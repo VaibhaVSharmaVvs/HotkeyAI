@@ -12,4 +12,10 @@
     <ProjectReference Include="..\HotkeyAI.Engine\HotkeyAI.Engine.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- DPAPI, for the approval store. Needed explicitly here because this project does not
+         reference WPF, which is what supplied it while the store lived in the agent. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
+  </ItemGroup>
+
 </Project>

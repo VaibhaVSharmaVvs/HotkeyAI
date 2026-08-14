@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using HotkeyAI.Engine.Store;
 
-namespace HotkeyAI.Agent;
+namespace HotkeyAI.Windows;
 
 /// <summary>
 /// Approvals persisted under DPAPI at user scope.

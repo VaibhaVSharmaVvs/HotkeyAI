@@ -76,17 +76,29 @@ it does not handle *contention*:
    is a war with another process that the user cannot see the score of.
 3. **Remember what registered last time.** The API cannot name the holder, but the app can say
    "this worked yesterday and does not today" — the diagnosis that actually helps, and the one
-   thing here the raw API cannot provide. *(Not yet implemented.)*
+   thing here the raw API cannot provide. *(Implemented. Every successful registration is
+   recorded in `hotkeys.json`; a chord that used to work and now does not is reported with when it
+   last did, so "you have always had this conflict" and "something changed" can be told apart.)*
 4. **Refuse to start a second instance.** Added after hitting it: a second agent registers
    nothing, and then truthfully reports every automation as "unavailable — another application
    already holds this combination". The other application is itself. A user who launches it
    twice would be told their automations are broken, by the process breaking them, with no hint
-   that the first copy is fine. A named mutex now refuses the second copy and says why;
-   `--list` and `--approve-all` are exempt because they only touch files.
+   that the first copy is fine. A named mutex now refuses the second copy and says why. Nothing
+   is exempt any more: inspecting and approving moved to the CLI, which never claims a hotkey.
 
 A delayed autostart trigger was on this list to lose the startup race deliberately. Under one
-manager that rationale is gone; a short delay may still be worth it for shell readiness at login,
-but that is a robustness question, not a coexistence one.
+manager that rationale is gone, and the delay turned out not to be needed anyway: autostart is a
+per-user Run entry, which the shell processes after it is up.
+
+**Scheduled tasks were the first choice and do not work.** `schtasks /Create /SC ONLOGON` is
+refused with "Access is denied" for a non-elevated user on a default Windows 11 install — with and
+without `/RU`, and with `/RL LIMITED`. Elevation was not an acceptable price: a tool whose premise
+is that the user should not have to learn the Startup folder cannot then demand administrator
+rights, and an application that registers global hotkeys and synthesises keystrokes is the last
+thing that should be training people to click through UAC on its behalf. The Run key needs no
+elevation, is per-user, is trivially reversible, and appears in Task Manager's Startup tab — which
+is a genuine advantage here, since software that can read every keystroke ought to be visible in
+the place people look for exactly that, and removable without going near this application.
 
 ### Caveat: availability is necessary, not sufficient
 
@@ -265,6 +277,36 @@ not obvious:
   second trap is DPI: an unaware harness reads a 380-unit window and captures 380 pixels of a
   window that is really 475 wide, cutting off the right-hand side — which reads convincingly as a
   text-wrapping bug that is not there.
+
+## F. The tray, and two bugs that hid behind "it worked"
+
+**A WinForms menu inside a WPF process is measured at the wrong DPI.** WPF sets the process to
+per-monitor DPI awareness at startup; WinForms does not follow unless separately configured, so a
+`ContextMenuStrip` measured itself at 96 DPI while the shell drew it scaled. At 125% the menu came
+out with truncated labels and scroll arrows, and **Quit fell below the fold** — the one item a user
+must always be able to reach. Replaced with a WPF `ContextMenu`, which is measured in the same
+units as the rest of the UI. Mixing the two frameworks for anything that lays itself out is not
+worth the convenience.
+
+**Choosing Quit crashed the agent, and looked like it worked.** The process did go away, so the
+behaviour appeared correct; the only symptom was that it took twelve seconds, which turned out to
+be Windows Error Reporting. `Application Error` in the event log gave exception code `0xe0434352` —
+an unhandled managed exception.
+
+The cause is thread affinity: a `Mutex` may only be released by the thread that acquired it. The
+single-instance mutex was taken on the main thread, and the code after `await quit.Task` ran on
+whichever thread resumed the continuation, so `ReleaseMutex` threw every time. The entry point is
+now synchronous and blocks on the result, which keeps acquisition and release on one thread.
+
+Two things worth taking from that. First, a process that exits is not evidence of a clean
+shutdown — exit code and the event log are. Second, this was latent long before the tray existed:
+the Ctrl+C path had exactly the same shape and would have crashed too, silently, because a console
+app closing on Ctrl+C is not something anyone looks at twice.
+
+**A tray icon is unreachable by double-click while it lives in the overflow.** Windows 11 hides new
+tray icons behind the chevron, and the first click of a double-click dismisses that flyout, so the
+second never lands. Nothing is wrong with the handler; the gesture cannot arrive. A single left
+click works in both the flyout and the taskbar, so that is what opens the dashboard.
 
 ## Methodology note
 

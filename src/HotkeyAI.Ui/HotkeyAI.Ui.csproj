@@ -4,12 +4,24 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>HotkeyAI.Ui</RootNamespace>
     <UseWPF>true</UseWPF>
+    <!-- WinForms for NotifyIcon only. WPF has no tray primitive, and the alternative is
+         Shell_NotifyIcon plus a hidden message window plus TrackPopupMenu by hand: a lot of
+         P/Invoke for a menu the framework already draws correctly on every Windows theme. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <!-- A library, not an executable. The picker sits on the execution path — the engine awaits
          a choice — so the agent hosts these windows in-process on a UI thread rather than
          launching a second process and waiting on a pipe for every show_picker. The named-pipe
          split in PLAN.md still applies to the management shell, where a frozen UI genuinely
          must not block the hotkey pump. -->
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- UseWindowsForms adds System.Windows.Forms and System.Drawing to the implicit usings,
+         where they collide with WPF on Button, TextBox, Brush, Color and Font. Removed globally
+         and imported explicitly by TrayIcon, the only file that wants them. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\HotkeyAI.Windows\HotkeyAI.Windows.csproj" />

@@ -82,9 +82,9 @@ tools/      schema-checks/                 Python schema hygiene + example valid
 src/        HotkeyAI.Core                  DSL, schema, validators — no Windows deps
             HotkeyAI.Engine                executor + safety controls, against IDesktop
             HotkeyAI.Windows               Win32 IDesktop -- the only project using Win32
-            HotkeyAI.Cli                   validate / explain / schema / apps / run
-            HotkeyAI.Agent                 resident host: hotkeys, panic key, approvals
-            HotkeyAI.Ui                    picker, input, confirm and toast overlays
+            HotkeyAI.Cli                   validate / explain / run / list / approve / autostart
+            HotkeyAI.Agent                 tray host: hotkeys, panic key, execution log, dashboard
+            HotkeyAI.Ui                    overlays, tray icon, dashboard
 tests/      HotkeyAI.Core.Tests            conformance, validators, error quality
             HotkeyAI.Engine.Tests          safety controls and execution, via FakeDesktop
 ```
@@ -128,6 +128,11 @@ dotnet run --project src/HotkeyAI.Cli -- schema           # print the contract
 # running a plan that prompts
 dotnet run --project src/HotkeyAI.Cli -- run examples/my-plan.json          # console prompts
 dotnet run --project src/HotkeyAI.Cli -- run examples/my-plan.json --ui     # the real overlays
+
+# the resident agent (it is windowed, so anything console-shaped is a CLI verb)
+dotnet run --project src/HotkeyAI.Cli -- list                 # what is installed and approved
+dotnet run --project src/HotkeyAI.Cli -- approve              # review and approve pending plans
+dotnet run --project src/HotkeyAI.Cli -- autostart on|off|status
 
 # whole-repo checks (both run in CI)
 python tools/schema-checks/check_schema.py schema/hotkeyai-dsl-v1.schema.json

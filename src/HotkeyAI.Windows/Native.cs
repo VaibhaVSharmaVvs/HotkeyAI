@@ -169,6 +169,10 @@ internal static partial class Native
     [LibraryImport("user32.dll")]
     internal static partial short GetAsyncKeyState(int key);
 
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool DestroyIcon(nint icon);
+
     // ------------------------------- integrity -------------------------------
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
@@ -284,6 +288,18 @@ internal static partial class Native
 
     [LibraryImport("kernel32.dll")]
     internal static partial uint GetCurrentThreadId();
+
+    // ------------------------------- console -------------------------------
+
+    internal const uint ATTACH_PARENT_PROCESS = 0xFFFFFFFF;
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool AttachConsole(uint processId);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool FreeConsole();
 
     internal static StringBuilder Unused { get; } = new();
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using HotkeyAI.Core;
 using HotkeyAI.Core.Dsl;
@@ -10,21 +11,22 @@ using HotkeyAI.Windows;
 namespace HotkeyAI.Agent;
 
 /// <summary>
-/// The resident process: owns the hotkeys, the store, and the executor.
+/// The resident process: owns the hotkeys, the store, the executor and the tray icon.
 /// </summary>
 /// <remarks>
-/// Console-hosted for now. The tray icon replaces the console window later without changing any
-/// of the wiring below, which is the point of keeping the pump, the store and the engine as
-/// separate pieces.
+/// Windowed rather than console-hosted. A console window is a thing users close, and closing it
+/// kills every hotkey with nothing left on screen to say so — the failure would look exactly like
+/// the automations having quietly stopped working. A tray icon is the honest version of "this is
+/// running": visible, and quit on purpose rather than by accident.
+/// <para>
+/// Nothing console-shaped lives here. Listing automations, approving them and turning autostart
+/// on are CLI verbs, because a GUI-subsystem process cannot do them properly: the shell does not
+/// wait for it, so output lands after the next prompt, and an interactive approval would be
+/// reading the same stdin the shell is.
+/// </para>
 /// </remarks>
 public static class AgentHost
 {
-    private static readonly string Root = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HotkeyAI");
-
-    private static readonly string AutomationsDirectory = Path.Combine(Root, "automations");
-    private static readonly string ApprovalsFile = Path.Combine(Root, "approvals.dat");
-
     /// <summary>
     /// The panic key. Registered before anything else, and never bound to an automation.
     /// </summary>
@@ -49,131 +51,123 @@ public static class AgentHost
     /// </remarks>
     private const string SingleInstanceMutex = @"Local\HotkeyAI.Agent.SingleInstance";
 
-    public static async Task<int> RunAsync(string[] args)
+    /// <summary>
+    /// Entry point. Synchronous, and deliberately so.
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="Mutex"/> has thread affinity: only the thread that acquired it may release it,
+    /// and doing otherwise throws. An <c>async</c> version of this method acquired the mutex on
+    /// the main thread and released it on whichever thread happened to resume the continuation
+    /// after the quit signal — so choosing Quit terminated the agent by crashing it. It looked
+    /// like it worked, because the process did go away; the giveaway was that it took twelve
+    /// seconds, which was Windows Error Reporting. Blocking the main thread here keeps acquisition
+    /// and release on one thread, which is the only way this is correct.
+    /// </remarks>
+    public static int Run(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
-
-        // --list and --approve-all only read and write files, so they may run alongside the
-        // resident agent; only the hotkey-owning path needs exclusivity.
-        var needsHotkeys = !args.Contains("--list", StringComparer.Ordinal)
-                           && !args.Contains("--approve-all", StringComparer.Ordinal);
 
         using var singleInstance = new Mutex(initiallyOwned: false, SingleInstanceMutex);
         var owned = false;
 
-        if (needsHotkeys)
+        try
         {
-            try
-            {
-                owned = singleInstance.WaitOne(TimeSpan.Zero);
-            }
-            catch (AbandonedMutexException)
-            {
-                // The previous agent was killed rather than closed. The mutex is ours now.
-                owned = true;
-            }
+            owned = singleInstance.WaitOne(TimeSpan.Zero);
+        }
+        catch (AbandonedMutexException)
+        {
+            // The previous agent was killed rather than closed. The mutex is ours now.
+            owned = true;
+        }
 
-            if (!owned)
-            {
-                Console.Error.WriteLine(
-                    "Hotkey AI is already running. That copy owns the hotkeys; this one would "
-                    + "register none of them and report every automation as unavailable. "
-                    + "Use --list to inspect state, or quit the running agent first.");
+        if (!owned)
+        {
+            AgentLog.Line(
+                "Hotkey AI is already running. That copy owns the hotkeys; this one would "
+                + "register none of them and report every automation as unavailable. "
+                + "Run `hotkeyai list` to inspect state, or quit the running agent first.");
 
-                return 3;
-            }
+            return 3;
         }
 
         try
         {
-            return await StartAsync(args, needsHotkeys).ConfigureAwait(false);
+            return StartAsync().GetAwaiter().GetResult();
         }
         finally
         {
-            if (owned)
-            {
-                singleInstance.ReleaseMutex();
-            }
+            singleInstance.ReleaseMutex();
         }
     }
 
-    private static async Task<int> StartAsync(string[] args, bool needsHotkeys)
+    private static async Task<int> StartAsync()
     {
-        Directory.CreateDirectory(AutomationsDirectory);
+        Directory.CreateDirectory(AgentPaths.Automations);
 
         var policy = PolicyOptions.Default with
         {
             AllowedRoots = [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)],
         };
 
-        var store = new AutomationStore(new DpapiApprovalStorage(ApprovalsFile), policy);
-        var loaded = store.Load(AutomationsDirectory);
+        var store = new AutomationStore(
+            new DpapiApprovalStorage(AgentPaths.Approvals),
+            policy,
+            new JsonDisabledStorage(AgentPaths.Disabled));
+        var history = new RegistrationHistory(AgentPaths.HotkeyHistory);
+        var loaded = store.Load(AgentPaths.Automations);
 
-        Console.WriteLine($"Hotkey AI — automations in {AutomationsDirectory}");
-        Console.WriteLine();
+        AgentLog.Line($"Hotkey AI — automations in {AgentPaths.Automations}");
+        AgentLog.Line();
 
-        if (loaded.Count == 0)
-        {
-            Console.WriteLine("No automations found. Drop a validated plan into that folder.");
-            return 0;
-        }
-
-        if (args.Contains("--approve-all", StringComparer.Ordinal))
-        {
-            return ApproveAll(store, loaded);
-        }
-
-        if (args.Contains("--list", StringComparer.Ordinal))
-        {
-            Report(loaded, new Dictionary<string, RegistrationResult>(StringComparer.Ordinal));
-            return 0;
-        }
 
         using var host = new HotkeyHost();
         using var panic = new CancellationTokenSource();
 
-        var registrations = Register(host, loaded, out var runnable);
-        Report(loaded, registrations);
+        var runnable = new Dictionary<string, Automation>(StringComparer.Ordinal);
+        var registrations = Register(host, loaded, runnable, history);
+
+        Report(loaded, registrations, history);
+        history.Save();
 
         var panicResult = host.Register("__panic", PanicChord);
-        Console.WriteLine(panicResult.Registered
+        AgentLog.Line(panicResult.Registered
             ? "Panic key   Ctrl+Alt+Shift+Esc — stops a running automation."
             : $"Panic key   UNAVAILABLE ({panicResult.Describe()}). Automations will run with no "
-              + "way to stop them from the keyboard; close this window instead.");
+              + "way to stop them from the keyboard; quit from the tray instead.");
 
-        if (runnable.Count == 0)
-        {
-            Console.WriteLine();
-            Console.WriteLine("Nothing is runnable, so no hotkeys are live.");
-            return 0;
-        }
-
-        // The overlays, not the console prompts. The agent has no console once it runs from the
-        // tray, so ConsolePrompts would leave show_picker and show_input reading a stdin that
-        // nobody can type into — the automation would hang with nothing on screen to explain it.
         var desktop = new WindowsDesktop(new WpfPrompts());
         var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots));
+        // RunContinuationsAsynchronously matters here. Quit is signalled from the tray menu's
+        // click handler, which runs on the UI thread; without this the whole shutdown sequence —
+        // unregistering hotkeys, joining the pump, disposing the tray — would run inline on that
+        // thread, with the menu still on the stack, tearing down the UI from inside itself.
+        var quit = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var running = 0;
 
         host.Pressed += name =>
         {
             if (string.Equals(name, "__panic", StringComparison.Ordinal))
             {
-                Console.WriteLine("\n[panic] stopping the running automation.");
+                AgentLog.Line("[panic] stopping the running automation.");
                 panic.Cancel();
                 return;
             }
 
-            if (!runnable.TryGetValue(name, out var plan))
+            Automation? plan;
+
+            lock (runnable)
             {
-                return;
+                if (!runnable.TryGetValue(name, out plan))
+                {
+                    return;
+                }
             }
 
             // One at a time. Two automations racing for the foreground window would produce
             // results neither plan describes, and the logs would interleave into nonsense.
             if (Interlocked.CompareExchange(ref running, 1, 0) != 0)
             {
-                Console.WriteLine($"\n[{name}] ignored — another automation is still running.");
+                AgentLog.Line($"[{name}] ignored — another automation is still running.");
                 return;
             }
 
@@ -190,22 +184,124 @@ public static class AgentHost
             });
         };
 
-        Console.WriteLine();
-        Console.WriteLine("Listening. Press Ctrl+C to quit.");
+        var live = registrations.Values.Count(r => r.Registered);
 
-        var quit = new TaskCompletionSource();
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true;
-            quit.TrySetResult();
-        };
+        void Rebind() => Reload(store, host, runnable, history);
+
+        var dashboard = new DashboardHost(store, policy, Rebind);
+
+        using var tray = await TrayIcon.ShowAsync(
+            Tooltip(loaded.Count, live),
+            () => Menu(store, runnable, dashboard, Rebind, quit),
+            () => DashboardWindow.Open(dashboard),
+            AgentLog.Line).ConfigureAwait(false);
+
+        AgentLog.Line();
+        AgentLog.Line($"Running in the tray. Log: {AgentLog.Path}");
+
+        // The one moment this process is allowed to interrupt: it has just started, has no window,
+        // and the user needs to know it is alive and how much of it is working.
+        tray.Notify(
+            "Hotkey AI is running",
+            live == loaded.Count
+                ? $"{live} automations are live."
+                : $"{live} of {loaded.Count} automations are live. Open the log for details.",
+            isError: live < loaded.Count);
 
         await quit.Task.ConfigureAwait(false);
-        Console.WriteLine("Stopping.");
+        AgentLog.Line("Stopping.");
         return 0;
     }
 
     // ---------------------------------------------------------------------------------
+
+    private static IReadOnlyList<TrayCommand> Menu(
+        AutomationStore store,
+        Dictionary<string, Automation> runnable,
+        DashboardHost dashboard,
+        Action rebind,
+        TaskCompletionSource quit)
+    {
+        // Counted at open time rather than captured at startup, because Reload changes it. A tray
+        // menu that reports yesterday's state is worse than one that reports none.
+        var loaded = store.Load(AgentPaths.Automations);
+        int live;
+
+        lock (runnable)
+        {
+            live = runnable.Count;
+        }
+
+        var autostart = Autostart.IsEnabled();
+
+        return
+        [
+            new TrayCommand($"{live} of {loaded.Count} automations live"),
+            TrayCommand.Separator,
+            new TrayCommand("Dashboard", () => DashboardWindow.Open(dashboard), Glyph: ""),
+            new TrayCommand(
+                "Automations folder", () => Shell.Open(AgentPaths.Automations), Glyph: ""),
+            new TrayCommand("View log", () => Shell.Open(AgentLog.Path), Glyph: ""),
+            new TrayCommand("Reload automations", rebind, Glyph: ""),
+            TrayCommand.Separator,
+            new TrayCommand(
+                "Start at login",
+                () => ToggleAutostart(autostart),
+                Checked: autostart,
+                Glyph: ""),
+            TrayCommand.Separator,
+            new TrayCommand("Quit Hotkey AI", () => quit.TrySetResult(), Glyph: ""),
+        ];
+    }
+
+    /// <summary>
+    /// Re-read the automations folder and rebind every hotkey.
+    /// </summary>
+    /// <remarks>
+    /// Everything is unregistered and registered again rather than diffed. Approval state, plan
+    /// contents and chords can all have changed since the last load, and a partial update that got
+    /// one of them wrong would leave a chord bound to a plan the user has since edited — which is
+    /// exactly what the trust-on-first-use gate exists to prevent.
+    /// </remarks>
+    private static void Reload(
+        AutomationStore store,
+        HotkeyHost host,
+        Dictionary<string, Automation> runnable,
+        RegistrationHistory history)
+    {
+        AgentLog.Line();
+        AgentLog.Line("Reloading automations.");
+
+        host.UnregisterAll();
+
+        lock (runnable)
+        {
+            runnable.Clear();
+        }
+
+        var loaded = store.Load(AgentPaths.Automations);
+        var registrations = Register(host, loaded, runnable, history);
+
+        Report(loaded, registrations, history);
+        history.Save();
+
+        // The panic key went with UnregisterAll, so it has to come back.
+        host.Register("__panic", PanicChord);
+    }
+
+    private static void ToggleAutostart(bool currentlyEnabled)
+    {
+        var error = currentlyEnabled ? Autostart.Disable() : Autostart.Enable();
+
+        AgentLog.Line(error is null
+            ? currentlyEnabled ? "Autostart removed." : "Autostart installed."
+            : $"Autostart change failed: {error}");
+    }
+
+    private static string Tooltip(int total, int live) =>
+        live == total
+            ? $"Hotkey AI — {live} automations live"
+            : $"Hotkey AI — {live} of {total} live, {total - live} not running";
 
     private static async Task ExecuteAsync(
         PlanExecutor executor,
@@ -213,8 +309,8 @@ public static class AgentHost
         Automation plan,
         CancellationTokenSource panic)
     {
-        Console.WriteLine();
-        Console.WriteLine($"[{name}] {DateTimeOffset.Now:HH:mm:ss} triggered");
+        AgentLog.Line();
+        AgentLog.Line($"[{name}] triggered");
 
         // A fresh token per run: the panic key must stop the automation that is running, not
         // permanently disable every future one.
@@ -223,29 +319,28 @@ public static class AgentHost
         try
         {
             var result = await executor.RunAsync(plan, run.Token).ConfigureAwait(false);
-            Console.Write(result.ToTranscript());
+            AgentLog.Raw(result.ToTranscript());
         }
 #pragma warning disable CA1031 // A failing automation must never take the agent down.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            Console.WriteLine($"[{name}] the engine failed unexpectedly: {ex.Message}");
+            AgentLog.Line($"[{name}] the engine failed unexpectedly: {ex.Message}");
         }
 
-        // Re-arm the panic source if it fired, so the next press of a hotkey still works.
         if (panic.IsCancellationRequested)
         {
-            Console.WriteLine("[panic] cleared; hotkeys are live again.");
+            AgentLog.Line("[panic] cleared; hotkeys are live again.");
         }
     }
 
     private static Dictionary<string, RegistrationResult> Register(
         HotkeyHost host,
         IReadOnlyList<StoredAutomation> loaded,
-        out Dictionary<string, Automation> runnable)
+        Dictionary<string, Automation> runnable,
+        RegistrationHistory history)
     {
         var registrations = new Dictionary<string, RegistrationResult>(StringComparer.Ordinal);
-        runnable = new Dictionary<string, Automation>(StringComparer.Ordinal);
 
         foreach (var automation in loaded)
         {
@@ -261,7 +356,13 @@ public static class AgentHost
 
             if (result.Registered)
             {
-                runnable[automation.FileName] = automation.Plan;
+                lock (runnable)
+                {
+                    runnable[automation.FileName] = automation.Plan;
+                }
+
+                history.RecordSuccess(
+                    automation.FileName, PlanRenderer.DescribeTrigger(automation.Plan.Trigger));
             }
         }
 
@@ -279,7 +380,8 @@ public static class AgentHost
     /// </remarks>
     private static void Report(
         IReadOnlyList<StoredAutomation> loaded,
-        Dictionary<string, RegistrationResult> registrations)
+        Dictionary<string, RegistrationResult> registrations,
+        RegistrationHistory history)
     {
         foreach (var automation in loaded)
         {
@@ -296,6 +398,13 @@ public static class AgentHost
             else if (registrations.TryGetValue(automation.FileName, out var registration))
             {
                 state = registration.Describe();
+
+                // The API cannot name the holder, but history can say whether this is new.
+                if (!registration.Registered
+                    && history.Explain(automation.FileName, chord) is { } sinceWhen)
+                {
+                    state += $" — {sinceWhen}";
+                }
             }
             else
             {
@@ -307,70 +416,16 @@ public static class AgentHost
                 ? "  ok  "
                 : "  --  ";
 
-            Console.WriteLine($"{marker}{automation.FileName,-30} {chord,-22} {state}");
+            AgentLog.Line($"{marker}{automation.FileName,-30} {chord,-22} {state}");
 
             if (automation.Blocker is not null && !automation.Validation.IsValid)
             {
                 foreach (var error in automation.Validation.Errors.Take(3))
                 {
-                    Console.WriteLine($"        {error}");
+                    AgentLog.Line($"        {error}");
                 }
             }
         }
     }
 
-    /// <summary>
-    /// Approve every valid automation, after showing what each one does.
-    /// </summary>
-    /// <remarks>
-    /// The plan is printed before the prompt, every time. Approval means "I have read this and
-    /// I accept what it does" — a yes/no on a filename would be a rubber stamp, and would make
-    /// safety control 4 theatre rather than a control.
-    /// </remarks>
-    private static int ApproveAll(AutomationStore store, IReadOnlyList<StoredAutomation> loaded)
-    {
-        var pending = loaded.Where(a => a.Status != ApprovalStatus.Approved).ToList();
-
-        if (pending.Count == 0)
-        {
-            Console.WriteLine("Everything is already approved.");
-            return 0;
-        }
-
-        foreach (var automation in pending)
-        {
-            Console.WriteLine(new string('=', 70));
-
-            if (!automation.Validation.IsValid || automation.Plan is null)
-            {
-                Console.WriteLine($"{automation.FileName}: invalid, so it cannot be approved.");
-                foreach (var error in automation.Validation.Errors.Take(5))
-                {
-                    Console.WriteLine($"  {error}");
-                }
-
-                continue;
-            }
-
-            var verb = automation.Status == ApprovalStatus.New ? "NEW" : "CHANGED";
-            Console.WriteLine($"{verb}: {automation.FileName}");
-            Console.WriteLine();
-            Console.WriteLine(PlanRenderer.Explain(automation.Plan));
-
-            Console.Write("Approve this automation? [y/N] ");
-            var answer = Console.ReadLine();
-
-            if (answer?.Trim().StartsWith('y') == true)
-            {
-                store.Approve(automation);
-                Console.WriteLine("Approved.");
-            }
-            else
-            {
-                Console.WriteLine("Left inert.");
-            }
-        }
-
-        return 0;
-    }
 }

@@ -21,6 +21,8 @@ public sealed class AutomationStoreTests : IDisposable
 
     private readonly FakeApprovals approvals = new();
 
+    private readonly FakeDisabled disabled = new();
+
     private static readonly PolicyOptions Policy = PolicyOptions.Default with
     {
         AllowedRoots = [@"C:\Users\test"],
@@ -54,6 +56,16 @@ public sealed class AutomationStoreTests : IDisposable
         }
     }
 
+    private sealed class FakeDisabled : IDisabledStorage
+    {
+        private HashSet<string> off = new(StringComparer.OrdinalIgnoreCase);
+
+        public IReadOnlySet<string> Read() => off;
+
+        public void Write(IReadOnlySet<string> disabled) =>
+            off = new HashSet<string>(disabled, StringComparer.OrdinalIgnoreCase);
+    }
+
     private string WritePlan(string name, string trigger = @"[""CTRL"",""ALT"",""P""]", string extra = "")
     {
         var path = Path.Combine(directory, name);
@@ -69,7 +81,7 @@ public sealed class AutomationStoreTests : IDisposable
         return path;
     }
 
-    private AutomationStore Store() => new(approvals, Policy);
+    private AutomationStore Store() => new(approvals, Policy, disabled);
 
     // ------------------------------- the gate -------------------------------
 
@@ -217,5 +229,101 @@ public sealed class AutomationStoreTests : IDisposable
         var reloaded = store.Load(directory).OrderBy(a => a.FileName, StringComparer.Ordinal).ToList();
         Assert.True(reloaded[0].IsRunnable);
         Assert.False(reloaded[1].IsRunnable);
+    }
+
+    // ------------------------------- enable and disable -------------------------------
+
+    [Fact]
+    public void AutomationsAreEnabledUntilTheUserSaysOtherwise()
+    {
+        // Enabled by default matters: a plan the user drops in and approves should just work.
+        // The alternative is a new automation that silently does nothing, with the reason
+        // buried in a settings file they have never opened.
+        WritePlan("mine.json");
+        var store = Store();
+        store.Approve(store.Load(directory)[0]);
+
+        var automation = store.Load(directory)[0];
+
+        Assert.True(automation.IsEnabled);
+        Assert.True(automation.IsRunnable);
+    }
+
+    [Fact]
+    public void DisablingStopsItRunning()
+    {
+        WritePlan("mine.json");
+        var store = Store();
+        store.Approve(store.Load(directory)[0]);
+
+        store.SetEnabled("mine.json", enabled: false);
+
+        var automation = store.Load(directory)[0];
+        Assert.False(automation.IsEnabled);
+        Assert.False(automation.IsRunnable);
+        Assert.Equal("turned off", automation.Blocker);
+    }
+
+    [Fact]
+    public void DisablingDoesNotRevokeApproval()
+    {
+        // The whole point of keeping these separate. Re-enabling must not send the user back
+        // through an approval prompt for a plan they have already read and never changed --
+        // that would make the prompt something to click past rather than something to read.
+        WritePlan("mine.json");
+        var store = Store();
+        store.Approve(store.Load(directory)[0]);
+
+        store.SetEnabled("mine.json", enabled: false);
+        store.SetEnabled("mine.json", enabled: true);
+
+        var automation = store.Load(directory)[0];
+        Assert.Equal(ApprovalStatus.Approved, automation.Status);
+        Assert.True(automation.IsRunnable);
+        Assert.Null(automation.Blocker);
+    }
+
+    [Fact]
+    public void DisablingAnUnapprovedAutomationStillReportsBeingOff()
+    {
+        // Both blockers apply; the user's own switch is the one reported, because it is the one
+        // they can undo and the one that explains what they just did.
+        WritePlan("mine.json");
+        var store = Store();
+
+        store.SetEnabled("mine.json", enabled: false);
+
+        Assert.Equal("turned off", store.Load(directory)[0].Blocker);
+    }
+
+    [Fact]
+    public void TogglingIsPerAutomation()
+    {
+        WritePlan("one.json");
+        WritePlan("two.json", @"[""CTRL"",""ALT"",""Q""]");
+        var store = Store();
+
+        foreach (var automation in store.Load(directory))
+        {
+            store.Approve(automation);
+        }
+
+        store.SetEnabled("one.json", enabled: false);
+
+        var loaded = store.Load(directory).OrderBy(a => a.FileName, StringComparer.Ordinal).ToList();
+        Assert.False(loaded[0].IsRunnable);
+        Assert.True(loaded[1].IsRunnable);
+    }
+
+    [Fact]
+    public void AStoreWithNoDisabledStorageTreatsEverythingAsEnabled()
+    {
+        // The CLI constructs a store without one. It must not accidentally report every
+        // automation as switched off.
+        WritePlan("mine.json");
+        var store = new AutomationStore(approvals, Policy);
+        store.Approve(store.Load(directory)[0]);
+
+        Assert.True(store.Load(directory)[0].IsEnabled);
     }
 }
