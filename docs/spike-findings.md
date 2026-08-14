@@ -222,6 +222,50 @@ caught the typing corruption, and it only caught it because the probe had a post
 against. An action with no postcondition is not "probably fine" — measured here, it is where every
 silent failure lived.
 
+## E. Building the picker overlay
+
+Three defects, all found by running the thing rather than by reading it. Every one of them left
+code that compiles cleanly, passes its unit tests, and looks correct on the page.
+
+**`InvariantGlobalization` and WPF text input are incompatible.** Focusing a `TextBox` asks the
+keyboard layout for its culture, and under invariant globalization constructing that culture
+throws — LCID 16393, English (India), on this machine. The first run of the picker died with an
+unhandled `CultureNotFoundException` before the window ever drew. The setting is now overridden in
+the two executables that host WPF; Core, Engine and the tests keep invariant mode, which is what
+makes validator behaviour identical on every machine.
+
+**Accepting a choice cancelled it.** Selecting an item closes the window; closing deactivates it;
+deactivation is how the user dismisses an overlay by clicking away. So every successful selection
+immediately overwrote its own result with "cancelled". The symptom was a picker that filtered
+correctly, highlighted the right row, and reported that the user cancelled no matter what they
+pressed. A double-close guard did not fix it, because the result is discarded *before* the second
+close is attempted — the guard has to sit on the cancel path, not the close path.
+
+**A selected row that renders identically to every other row.** The `ControlTemplate` trigger set
+`Background` without a `TargetName`, so it applied to the templated `ListBoxItem` rather than to
+the `Border` that actually paints. Nothing errors; the highlight simply never appears, and the one
+thing the user must be able to see — which item Enter will choose — is invisible.
+
+### Two notes on testing a UI
+
+The overlays were driven end to end from the CLI with a `--ui` switch and synthetic keystrokes,
+which is the only way to test them without a person at the keyboard. Two things about that were
+not obvious:
+
+- **`SendKeys` cannot be used to test an overlay.** `System.Windows.Forms.SendKeys` activates the
+  sending process, which deactivates the picker, which the picker correctly treats as the user
+  clicking away — so the test dismisses the window it is trying to drive. Raw `SendInput` injects
+  into the foreground queue without touching focus. Sending a *Unicode packet* is also not the
+  same as pressing a key: the confirm overlay listens for `Key.Y`, and a packet arrives as
+  `VK_PACKET`, so "y" typed that way does nothing. A test harness has to send virtual keys where a
+  person would press one.
+- **Screenshots lie about overlays.** `CopyFromScreen` did not capture these windows, and a
+  full-screen grab therefore "proved" a toast was missing that window enumeration showed present,
+  visible, and correctly positioned. `PrintWindow` with `PW_RENDERFULLCONTENT` captures it. The
+  second trap is DPI: an unaware harness reads a 380-unit window and captures 380 pixels of a
+  window that is really 475 wide, cutting off the right-hand side — which reads convincingly as a
+  text-wrapping bug that is not there.
+
 ## Methodology note
 
 The first version of the availability sweep reported all 26 `CTRL+SHIFT` combinations free —

@@ -238,6 +238,19 @@ Two processes, deliberately:
 - A frozen or crashed UI must never block a hotkey. The engine owns the message pump.
 - It keeps the trust boundary clean and leaves the door open to running the engine at a
   different integrity level later.
+
+**Amended once the picker was built.** The overlays — picker, input, confirm, toast — live in
+`HotkeyAI.Ui` but are hosted *in the agent's process*, on a dedicated STA thread, not behind the
+pipe. They sit on the execution path: the engine awaits a choice, so routing every `show_picker`
+through a process launch and an IPC round trip would add startup latency and a new hang mode to
+the flagship example, in exchange for nothing the user can see. The hotkey pump is unaffected
+either way, because the agent already runs executions off its main thread.
+
+The rationale above still holds for the *management shell* — the automation list, editor and plan
+preview — which is genuinely launched on demand and is where a frozen UI could otherwise matter.
+The price of hosting the overlays in-process is that an exception on the UI thread would take the
+hotkey owner down with it, so `WpfPrompts` catches and degrades to "cancelled" rather than letting
+one fail. That is not theoretical: the first run of the picker crashed the process outright.
 - Startup is the agent only; the UI is launched from the tray.
 
 `HotkeyAI.Core` holds the DSL types, schema, validator, and doc generators with no Windows
@@ -523,8 +536,11 @@ mid-flight.
 
 ### 🎯 Goal 2 — UI shell and picker (≈1.5 weeks)
 
-- ✅ `show_picker` overlay — fuzzy search, keyboard-only navigation, always-on-top, correct
-  focus restore on cancel. Treat as a real component.
+- ✅ **Done.** `show_picker` overlay — fuzzy search, keyboard-only navigation, always-on-top,
+  correct focus restore on cancel. Ranking is `FuzzyMatcher` in Core, unit tested; the overlay
+  renders and decides nothing. `show_input`, the destructive-action confirm and the `notify` toast
+  ship with it, since `IPrompts` is one interface and a half-implemented one would leave the agent
+  reading a console that is not there.
 - ✅ WPF shell — automation list with enable/disable, hotkey capture control with live
   availability check, and the TOFU approval prompt.
 - ✅ Plan preview — human-readable step list with `unverified` tags rendered honestly. Shared

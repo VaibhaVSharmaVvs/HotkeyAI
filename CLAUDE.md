@@ -5,7 +5,8 @@ executes, verifies, and can roll back. See `PLAN.md` for the full design and `Co
 for the original product concept.
 
 **Stack:** C# / .NET 10 (LTS), WPF. Two processes — `HotkeyAI.Agent` (tray, always resident,
-owns the hotkey pump) and `HotkeyAI.Ui` (launched on demand, talks to the agent over a named
+owns the hotkey pump, and hosts the overlays) and `HotkeyAI.Ui` (a WPF library of overlays; the
+management shell it will also hold is launched on demand and talks to the agent over a named
 pipe). `HotkeyAI.Core` targets plain `net10.0` with no Windows dependencies.
 
 ## The one thing to understand
@@ -83,7 +84,7 @@ src/        HotkeyAI.Core                  DSL, schema, validators — no Window
             HotkeyAI.Windows               Win32 IDesktop -- the only project using Win32
             HotkeyAI.Cli                   validate / explain / schema / apps / run
             HotkeyAI.Agent                 resident host: hotkeys, panic key, approvals
-            HotkeyAI.Ui                    plan preview, picker overlay (not yet built)
+            HotkeyAI.Ui                    picker, input, confirm and toast overlays
 tests/      HotkeyAI.Core.Tests            conformance, validators, error quality
             HotkeyAI.Engine.Tests          safety controls and execution, via FakeDesktop
 ```
@@ -99,6 +100,10 @@ tests/      HotkeyAI.Core.Tests            conformance, validators, error qualit
 - **Keep the schema inside the structured-output subset** — no `minimum`/`maxLength`/`if`/`not`.
   Those constraints belong in the policy validator so V2 can hand the schema to the API
   unchanged. `tools/schema-checks/check_schema.py` enforces this.
+- **The picker's ranking lives in `Core`, not in the WPF project.** `FuzzyMatcher` is a pure
+  function with tests that run on Linux CI, because ranking is the only part of an overlay that
+  can be quietly wrong: showing the right items in the wrong order looks fine in a screenshot and
+  costs someone the wrong project. `HotkeyAI.Ui` renders what it is told and decides nothing.
 - **`HotkeyAI.Core` and `HotkeyAI.Engine` stay free of Windows dependencies.** The engine
   reaches the OS only through `IDesktop`, which is what makes the safety controls testable —
   step caps, the panic key, the sensitive-window guard and the path guard all have tests that
@@ -119,6 +124,10 @@ dotnet run --project src/HotkeyAI.Cli -- validate examples/my-plan.json
 dotnet run --project src/HotkeyAI.Cli -- validate examples/my-plan.json --json
 dotnet run --project src/HotkeyAI.Cli -- explain  examples/my-plan.json
 dotnet run --project src/HotkeyAI.Cli -- schema           # print the contract
+
+# running a plan that prompts
+dotnet run --project src/HotkeyAI.Cli -- run examples/my-plan.json          # console prompts
+dotnet run --project src/HotkeyAI.Cli -- run examples/my-plan.json --ui     # the real overlays
 
 # whole-repo checks (both run in CI)
 python tools/schema-checks/check_schema.py schema/hotkeyai-dsl-v1.schema.json

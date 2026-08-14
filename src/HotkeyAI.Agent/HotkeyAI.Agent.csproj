@@ -5,16 +5,23 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>HotkeyAI.Agent</RootNamespace>
     <AssemblyName>hotkeyai-agent</AssemblyName>
+    <!-- The agent hosts the picker overlay in-process, so it needs the WPF assemblies.
+         This also supplies DPAPI, which is why System.Security.Cryptography.ProtectedData
+         is no longer referenced explicitly. -->
+    <UseWPF>true</UseWPF>
+    <!-- WPF text input needs real culture data. Focusing a TextBox asks the keyboard layout
+         for its culture, and under InvariantGlobalization that throws CultureNotFoundException
+         and takes the process down — so the overlay crashed the moment the picker opened.
+         Overridden here rather than in Directory.Build.props: Core, Engine and the tests keep
+         invariant mode, which is what makes validator behaviour identical on every machine. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <!-- Console-hosted for now. The tray icon replaces the console window later; the hotkey
          pump, store and executor wiring do not change when it does. -->
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\HotkeyAI.Windows\HotkeyAI.Windows.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
+    <ProjectReference Include="..\HotkeyAI.Ui\HotkeyAI.Ui.csproj" />
   </ItemGroup>
 
 </Project>

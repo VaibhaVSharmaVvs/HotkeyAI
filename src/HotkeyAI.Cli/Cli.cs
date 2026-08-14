@@ -1,9 +1,12 @@
+using System.IO;
 using System.Text.Json;
 using HotkeyAI.Core;
 using HotkeyAI.Core.Dsl;
 using HotkeyAI.Core.Json;
 using HotkeyAI.Core.Policy;
 using HotkeyAI.Engine.Execution;
+using HotkeyAI.Engine.Platform;
+using HotkeyAI.Ui;
 using HotkeyAI.Windows;
 
 namespace HotkeyAI.Cli;
@@ -170,7 +173,7 @@ public static class Cli
 
         if (path is null)
         {
-            Error("run needs a file: hotkeyai run <file> [--dry-run]");
+            Error("run needs a file: hotkeyai run <file> [--dry-run] [--ui]");
             return ExitCode.Usage;
         }
 
@@ -220,7 +223,14 @@ public static class Cli
 
         try
         {
-            var desktop = new WindowsDesktop();
+            // --ui runs the plan against the same overlays the agent uses, instead of the
+            // console prompts. It exists so the picker can be exercised from a terminal: the
+            // agent's only route to it is a live hotkey press, which cannot be scripted.
+            var prompts = args.Contains("--ui", StringComparer.Ordinal)
+                ? new WpfPrompts()
+                : (IPrompts)new ConsolePrompts();
+
+            var desktop = new WindowsDesktop(prompts);
             var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots));
             var result = await executor.RunAsync(automation, panic.Token).ConfigureAwait(false);
 
@@ -343,7 +353,8 @@ public static class Cli
             Usage:
               hotkeyai validate <file> [--json]   Check a plan against the DSL schema
               hotkeyai explain  <file>            Print the plan in readable form
-              hotkeyai run      <file> [--dry-run]  Execute a plan on this machine
+              hotkeyai run      <file> [--dry-run] [--ui]
+                                           Execute a plan on this machine
               hotkeyai schema                     Print the DSL schema to stdout
               hotkeyai apps                       Show which logical app names resolve here
 

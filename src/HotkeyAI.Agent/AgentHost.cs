@@ -1,8 +1,10 @@
+using System.IO;
 using HotkeyAI.Core;
 using HotkeyAI.Core.Dsl;
 using HotkeyAI.Core.Policy;
 using HotkeyAI.Engine.Execution;
 using HotkeyAI.Engine.Store;
+using HotkeyAI.Ui;
 using HotkeyAI.Windows;
 
 namespace HotkeyAI.Agent;
@@ -146,7 +148,10 @@ public static class AgentHost
             return 0;
         }
 
-        var desktop = new WindowsDesktop();
+        // The overlays, not the console prompts. The agent has no console once it runs from the
+        // tray, so ConsolePrompts would leave show_picker and show_input reading a stdin that
+        // nobody can type into — the automation would hang with nothing on screen to explain it.
+        var desktop = new WindowsDesktop(new WpfPrompts());
         var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots));
         var running = 0;
 

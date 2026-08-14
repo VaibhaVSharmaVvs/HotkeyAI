@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>HotkeyAI.Ui</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <!-- A library, not an executable. The picker sits on the execution path — the engine awaits
+         a choice — so the agent hosts these windows in-process on a UI thread rather than
+         launching a second process and waiting on a pipe for every show_picker. The named-pipe
+         split in PLAN.md still applies to the management shell, where a frozen UI genuinely
+         must not block the hotkey pump. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HotkeyAI.Windows\HotkeyAI.Windows.csproj" />
+  </ItemGroup>
+
+</Project>

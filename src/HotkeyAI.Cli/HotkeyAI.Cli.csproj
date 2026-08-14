@@ -5,6 +5,15 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>HotkeyAI.Cli</RootNamespace>
     <AssemblyName>hotkeyai</AssemblyName>
+    <!-- WPF so that the run verb's ui switch can exercise the real overlays. Without it the
+         picker could only ever be tested by pressing a live hotkey, which is not a test. -->
+    <UseWPF>true</UseWPF>
+    <!-- WPF text input needs real culture data. Focusing a TextBox asks the keyboard layout
+         for its culture, and under InvariantGlobalization that throws CultureNotFoundException
+         and takes the process down — so the overlay crashed the moment the picker opened.
+         Overridden here rather than in Directory.Build.props: Core, Engine and the tests keep
+         invariant mode, which is what makes validator behaviour identical on every machine. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <!-- Windows-targeted since `run` executes plans against the real desktop, which needs
          HotkeyAI.Windows. Note this does not pull Core or Engine onto Windows: they remain
          plain net10.0 and keep their Linux CI coverage. The dependency points one way. -->
@@ -13,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\HotkeyAI.Core\HotkeyAI.Core.csproj" />
     <ProjectReference Include="..\HotkeyAI.Windows\HotkeyAI.Windows.csproj" />
+    <ProjectReference Include="..\HotkeyAI.Ui\HotkeyAI.Ui.csproj" />
   </ItemGroup>
 
 </Project>
