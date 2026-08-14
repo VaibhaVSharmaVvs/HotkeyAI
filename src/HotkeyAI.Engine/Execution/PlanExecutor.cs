@@ -312,12 +312,24 @@ public sealed partial class PlanExecutor(
         run.Entries.Add(new LogEntry(
             DateTimeOffset.Now, actionId, type, outcome, verification, detail));
 
+    /// <summary>
+    /// Maps each action record to the <c>type</c> the plan actually wrote.
+    /// </summary>
+    /// <remarks>
+    /// Read from the base type, not the derived one: <c>[DslType]</c> is declared once on
+    /// <see cref="HotkeyAction"/> listing every derived record, so asking a concrete record for
+    /// its own attribute finds nothing and falls back to the CLR name. That is not cosmetic —
+    /// the execution log is read by the user and pasted into repair prompts, and a log saying
+    /// <c>ListDirectoriesAction</c> does not match anything in the plan the person is holding.
+    /// </remarks>
+    private static readonly Dictionary<Type, string> Discriminators =
+        typeof(HotkeyAction)
+            .GetCustomAttributes(typeof(Core.Json.DslTypeAttribute), inherit: false)
+            .Cast<Core.Json.DslTypeAttribute>()
+            .ToDictionary(a => a.DerivedType, a => a.Discriminator);
+
     private static string Discriminator(HotkeyAction action) =>
-        action.GetType()
-            .GetCustomAttributes(typeof(Core.Json.DslTypeAttribute), false) is
-            [Core.Json.DslTypeAttribute attribute]
-            ? attribute.Discriminator
-            : action.GetType().Name;
+        Discriminators.TryGetValue(action.GetType(), out var name) ? name : action.GetType().Name;
 
     private sealed record RunState(
         Variables Variables, List<LogEntry> Entries, Stopwatch Timer)

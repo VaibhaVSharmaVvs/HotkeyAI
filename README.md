@@ -9,7 +9,7 @@ if you're authoring automations.
 
 ## Status
 
-Goal 1 of 4, early. Nothing runs yet.
+Goal 1 of 4. Automations execute; the hotkey that fires them is next.
 
 | | |
 |---|---|
@@ -17,19 +17,25 @@ Goal 1 of 4, early. Nothing runs yet.
 | ✅ | Eight reference automations, **100% action-type coverage** |
 | ✅ | Schema checks + generated `docs/capabilities.md`, gated in CI |
 | ✅ | `HotkeyAI.Core` — 25 records, schema validator, bidirectional conformance test |
-| ✅ | `HotkeyAI.Cli` — `validate` (with `--json`), `explain`, `schema` |
+| ✅ | `HotkeyAI.Cli` — `validate` (with `--json`), `explain`, `schema`, `apps`, `run` |
 | ✅ | `HotkeyAI.Core` — policy layer (bounds, allowed roots, variable dataflow) |
 | ✅ | `HotkeyAI.Engine` — executor, observer, safety controls, all 25 primitives |
-| ⬜ | `HotkeyAI.Agent` — Win32 `IDesktop`, hotkey pump, tray, store, TOFU gate |
-| ⬜ | `HotkeyAI.Cli` — `import` / `run` / `logs` (need the agent) |
+| ✅ | `HotkeyAI.Windows` — Win32 `IDesktop`: processes, windows, input, files, clipboard |
+| ⬜ | `HotkeyAI.Agent` — hotkey pump, tray, store, TOFU gate |
+| ⬜ | `HotkeyAI.Cli` — `import` / `logs` (need the agent) |
 | ⬜ | `HotkeyAI.Ui` — automation list, plan preview, picker overlay |
 
-You can author and inspect automations today:
+Author, inspect and run automations today:
 
 ```powershell
 dotnet run --project src/HotkeyAI.Cli -- explain  examples/project-launcher.json
 dotnet run --project src/HotkeyAI.Cli -- validate examples/project-launcher.json --json
+dotnet run --project src/HotkeyAI.Cli -- apps                    # what resolves here
+dotnet run --project src/HotkeyAI.Cli -- run examples/project-launcher.json --dry-run
+dotnet run --project src/HotkeyAI.Cli -- run examples/project-launcher.json
 ```
+
+Automations execute today; only the hotkey that fires them is missing.
 
 ## How it works
 
@@ -48,8 +54,8 @@ Three ideas carry the design:
    previewed, diffed, and rolled back. Generating a script instead would make all four
    impossible.
 2. **There is an execution hierarchy.** Native API → app CLI → UI Automation → synthetic
-   input. `launch_process("Code.exe", path)` beats twelve simulated UI steps, and a media key
-   is a `WM_APPCOMMAND` broadcast rather than a click.
+   input. `launch_process("Code.exe", path)` beats twelve simulated UI steps, and play/pause is
+   a media-key press the shell routes to whoever owns playback — no window to find at all.
 3. **AI is out of the hot path.** Planning happens once per automation; execution is pure
    engine. Cost and latency never scale with how often you press the key.
 
@@ -58,8 +64,8 @@ an API planner using that same schema for structured output.
 
 ## Getting started
 
-Requires the [.NET 9 SDK](https://dotnet.microsoft.com/download) (`winget install
-Microsoft.DotNet.SDK.9`) and Python with `jsonschema` for the schema checks.
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download) (`winget install
+Microsoft.DotNet.SDK.10`) and, for the schema checks, Python with `jsonschema`.
 
 ```powershell
 python tools/schema-checks/check_schema.py schema/hotkeyai-dsl-v1.schema.json

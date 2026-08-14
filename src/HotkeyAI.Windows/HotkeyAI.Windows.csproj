@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>HotkeyAI.Windows</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The only project that may reference Win32. Everything above it — Core, Engine — stays
+         plain net10.0 so the DSL and the safety controls keep their Linux CI coverage. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HotkeyAI.Engine\HotkeyAI.Engine.csproj" />
+  </ItemGroup>
+
+</Project>

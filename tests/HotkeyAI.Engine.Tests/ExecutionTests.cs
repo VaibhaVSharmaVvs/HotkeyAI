@@ -287,6 +287,34 @@ public sealed class ExecutionTests
     }
 
     [Fact]
+    public async Task TheLogNamesActionsAsThePlanDoes()
+    {
+        // Regression from the first end-to-end run: the log printed CLR type names
+        // ("ListDirectoriesAction") because [DslType] is declared on the base class, so asking a
+        // derived record for its own attribute found nothing. The log is read by the user and
+        // pasted into repair prompts, so it has to use the words that appear in their plan.
+        var desktop = new FakeDesktop
+        {
+            Directories = { [@"C:\Users\test\Projects"] = ["a"] },
+        };
+
+        var plan = Plan(
+            """
+            { "type": "list_directories", "path": "C:\\Users\\test\\Projects", "into": "dirs" },
+            { "type": "if", "condition": { "type": "variable_empty", "variable": "dirs" },
+              "then": [ { "type": "notify", "message": "empty" } ] }
+            """,
+            """{ "name": "dirs", "type": "pathList" }""");
+
+        var transcript = (await Executor(desktop).RunAsync(plan, CancellationToken.None))
+            .ToTranscript();
+
+        Assert.Contains("list_directories", transcript, StringComparison.Ordinal);
+        Assert.Contains("if:", transcript, StringComparison.Ordinal);
+        Assert.DoesNotContain("Action:", transcript, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ArgumentsAreNeverConcatenatedIntoACommandLine()
     {
         // There is no shell primitive and argv is a list, so a value containing shell

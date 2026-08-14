@@ -3,6 +3,8 @@ using HotkeyAI.Core;
 using HotkeyAI.Core.Dsl;
 using HotkeyAI.Core.Json;
 using HotkeyAI.Core.Policy;
+using HotkeyAI.Engine.Execution;
+using HotkeyAI.Windows;
 
 namespace HotkeyAI.Cli;
 
@@ -48,7 +50,9 @@ public static class Cli
             "validate" => Validate(rest),
             "explain" => Explain(rest),
             "schema" => PrintSchema(),
-            "import" or "run" or "logs" => NotYetImplemented(verb),
+            "apps" => ListApps(),
+            "run" => RunPlanAsync(rest).GetAwaiter().GetResult(),
+            "import" or "logs" => NotYetImplemented(verb),
             _ => Unknown(verb),
         };
     }
@@ -154,6 +158,107 @@ public static class Cli
         return ExitCode.Ok;
     }
 
+    /// <summary>Execute a plan against the real desktop.</summary>
+    /// <remarks>
+    /// Validates through both layers first and refuses to run an invalid plan. That is not
+    /// belt-and-braces: the executor assumes a validated plan and checks meaning rather than
+    /// shape, so running an unvalidated one would skip every guarantee the two layers provide.
+    /// </remarks>
+    private static async Task<int> RunPlanAsync(string[] args)
+    {
+        var path = args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal));
+
+        if (path is null)
+        {
+            Error("run needs a file: hotkeyai run <file> [--dry-run]");
+            return ExitCode.Usage;
+        }
+
+        if (!TryRead(path, out var json))
+        {
+            return ExitCode.Usage;
+        }
+
+        var policy = PolicyForThisMachine();
+        var validation = PlanValidator.Validate(json, policy);
+
+        if (!validation.IsValid)
+        {
+            Console.Error.WriteLine($"{Path.GetFileName(path)} is not valid, so it will not run:");
+            foreach (var error in validation.Errors)
+            {
+                Console.Error.WriteLine($"  {error}");
+            }
+
+            return ExitCode.Invalid;
+        }
+
+        var automation = JsonSerializer.Deserialize<Automation>(json, DslJson.Options)!;
+
+        Console.WriteLine(PlanRenderer.Explain(automation));
+
+        if (args.Contains("--dry-run", StringComparer.Ordinal))
+        {
+            Console.WriteLine("--dry-run: nothing was executed.");
+            return ExitCode.Ok;
+        }
+
+        Console.WriteLine("Running. Press Ctrl+C to abort.");
+        Console.WriteLine(new string('-', 60));
+
+        // Ctrl+C stands in for the panic key until the agent owns a global one. Cancelling
+        // rather than killing matters: it lets the engine release any held modifier keys, which
+        // is the difference between a stopped automation and an apparently frozen desktop.
+        using var panic = new CancellationTokenSource();
+        ConsoleCancelEventHandler onCancel = (_, e) =>
+        {
+            e.Cancel = true;
+            panic.Cancel();
+        };
+
+        Console.CancelKeyPress += onCancel;
+
+        try
+        {
+            var desktop = new WindowsDesktop();
+            var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots));
+            var result = await executor.RunAsync(automation, panic.Token).ConfigureAwait(false);
+
+            Console.WriteLine(new string('-', 60));
+            Console.Write(result.ToTranscript());
+
+            return result.Succeeded ? ExitCode.Ok : ExitCode.Invalid;
+        }
+        finally
+        {
+            Console.CancelKeyPress -= onCancel;
+        }
+    }
+
+    /// <summary>Report which logical app names resolve on this machine.</summary>
+    /// <remarks>
+    /// The schema advertises these names to whoever authors a plan. If one does not resolve
+    /// here, a plan using it will fail at run time for a reason the author cannot see, so it is
+    /// worth being able to ask.
+    /// </remarks>
+    private static int ListApps()
+    {
+        var resolved = new WindowsDesktop().Resolver.ResolveAll();
+
+        foreach (var (name, path) in resolved.OrderBy(a => a.Key, StringComparer.Ordinal))
+        {
+            Console.WriteLine(path is null
+                ? $"  {name,-12} not installed"
+                : $"  {name,-12} {path}");
+        }
+
+        var missing = resolved.Count(a => a.Value is null);
+        Console.WriteLine();
+        Console.WriteLine($"{resolved.Count - missing} of {resolved.Count} resolve on this machine.");
+
+        return ExitCode.Ok;
+    }
+
     private static int PrintSchema()
     {
         // Handy for piping the contract to an authoring tool.
@@ -238,7 +343,9 @@ public static class Cli
             Usage:
               hotkeyai validate <file> [--json]   Check a plan against the DSL schema
               hotkeyai explain  <file>            Print the plan in readable form
+              hotkeyai run      <file> [--dry-run]  Execute a plan on this machine
               hotkeyai schema                     Print the DSL schema to stdout
+              hotkeyai apps                       Show which logical app names resolve here
 
             Exit codes:
               0  valid / success
@@ -249,7 +356,7 @@ public static class Cli
             docs/capabilities.md, then validate before trusting it. --json gives
             machine-readable errors suitable for an automated fix loop.
 
-            Not yet available (these need the agent): import, run, logs
+            Not yet available (these need the agent): import, logs
             """);
     }
 }

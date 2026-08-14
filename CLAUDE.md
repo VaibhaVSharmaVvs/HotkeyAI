@@ -80,8 +80,9 @@ examples/   reference automations          also the regression corpus + first-ru
 tools/      schema-checks/                 Python schema hygiene + example validation
 src/        HotkeyAI.Core                  DSL, schema, validators — no Windows deps
             HotkeyAI.Engine                executor + safety controls, against IDesktop
-            HotkeyAI.Cli                   validate / explain / schema
-            HotkeyAI.Agent|Ui              Win32, tray, hotkeys, store (not yet built)
+            HotkeyAI.Windows               Win32 IDesktop -- the only project using Win32
+            HotkeyAI.Cli                   validate / explain / schema / apps / run
+            HotkeyAI.Agent|Ui              tray, hotkeys, store (not yet built)
 tests/      HotkeyAI.Core.Tests            conformance, validators, error quality
             HotkeyAI.Engine.Tests          safety controls and execution, via FakeDesktop
 ```
