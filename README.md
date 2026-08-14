@@ -19,7 +19,8 @@ Goal 1 of 4, early. Nothing runs yet.
 | ✅ | `HotkeyAI.Core` — 25 records, schema validator, bidirectional conformance test |
 | ✅ | `HotkeyAI.Cli` — `validate` (with `--json`), `explain`, `schema` |
 | ✅ | `HotkeyAI.Core` — policy layer (bounds, allowed roots, variable dataflow) |
-| ⬜ | `HotkeyAI.Agent` — hotkey pump, executor, observer, store |
+| ✅ | `HotkeyAI.Engine` — executor, observer, safety controls, all 25 primitives |
+| ⬜ | `HotkeyAI.Agent` — Win32 `IDesktop`, hotkey pump, tray, store, TOFU gate |
 | ⬜ | `HotkeyAI.Cli` — `import` / `run` / `logs` (need the agent) |
 | ⬜ | `HotkeyAI.Ui` — automation list, plan preview, picker overlay |
 

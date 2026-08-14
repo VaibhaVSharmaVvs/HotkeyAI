@@ -2,8 +2,10 @@
   <Folder Name="/src/">
     <Project Path="src/HotkeyAI.Cli/HotkeyAI.Cli.csproj" />
     <Project Path="src/HotkeyAI.Core/HotkeyAI.Core.csproj" />
+    <Project Path="src/HotkeyAI.Engine/HotkeyAI.Engine.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/HotkeyAI.Core.Tests/HotkeyAI.Core.Tests.csproj" />
+    <Project Path="tests/HotkeyAI.Engine.Tests/HotkeyAI.Engine.Tests.csproj" />
   </Folder>
 </Solution>

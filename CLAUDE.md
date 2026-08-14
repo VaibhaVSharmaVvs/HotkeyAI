@@ -78,8 +78,12 @@ schema/     hotkeyai-dsl-v1.schema.json   the contract, hand-authored, source of
 docs/       capabilities.md                generated from the schema; do not hand-edit
 examples/   reference automations          also the regression corpus + first-run examples
 tools/      schema-checks/                 Python schema hygiene + example validation
-src/        HotkeyAI.Core|Agent|Ui|Cli     (Core has no Windows dependencies)
-tests/      HotkeyAI.Core.Tests            conformance, validator, policy layer
+src/        HotkeyAI.Core                  DSL, schema, validators — no Windows deps
+            HotkeyAI.Engine                executor + safety controls, against IDesktop
+            HotkeyAI.Cli                   validate / explain / schema
+            HotkeyAI.Agent|Ui              Win32, tray, hotkeys, store (not yet built)
+tests/      HotkeyAI.Core.Tests            conformance, validators, error quality
+            HotkeyAI.Engine.Tests          safety controls and execution, via FakeDesktop
 ```
 
 ## Conventions
@@ -93,8 +97,14 @@ tests/      HotkeyAI.Core.Tests            conformance, validator, policy layer
 - **Keep the schema inside the structured-output subset** — no `minimum`/`maxLength`/`if`/`not`.
   Those constraints belong in the policy validator so V2 can hand the schema to the API
   unchanged. `tools/schema-checks/check_schema.py` enforces this.
-- **`HotkeyAI.Core` stays free of Windows dependencies** so it is testable without a desktop
-  session.
+- **`HotkeyAI.Core` and `HotkeyAI.Engine` stay free of Windows dependencies.** The engine
+  reaches the OS only through `IDesktop`, which is what makes the safety controls testable —
+  step caps, the panic key, the sensitive-window guard and the path guard all have tests that
+  run on Linux CI. Anything touching Win32 belongs in `HotkeyAI.Agent`. If the CI build ever
+  needs a Windows runner, something has leaked.
+- **Adding a primitive means teaching the executor too**, not just the schema and the renderer.
+  `PlanExecutor.DispatchAsync` has a case per action; the fallback returns a failure naming the
+  omission rather than silently doing nothing.
 - Safety controls (panic key, step caps, sensitive-window guard, trust-on-first-use signing)
   are requirements, not polish. See `PLAN.md` § Non-negotiable safety controls before touching
   the executor or the store.

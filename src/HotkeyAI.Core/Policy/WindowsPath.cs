@@ -122,5 +122,52 @@ public static class WindowsPath
         return normalisedCandidate.StartsWith(normalisedRoot + '\\', StringComparison.Ordinal);
     }
 
+    /// <summary>The final segment: file or folder name including any extension.</summary>
+    /// <remarks>
+    /// Backs <c>${variable.name}</c>. Implemented here rather than with
+    /// <see cref="System.IO.Path"/> for the same reason as the rest of this type — on Linux,
+    /// <c>Path.GetFileName(@"C:\a\b")</c> returns the whole string, because a backslash is an
+    /// ordinary character there. An automation interpolating a path property would then produce
+    /// different text in CI than on the machine it runs on.
+    /// </remarks>
+    public static string? FileName(string path)
+    {
+        var segments = Segments(path);
+        return segments.Length == 0 ? null : segments[^1];
+    }
+
+    /// <summary>The containing directory, or null if the path has no parent.</summary>
+    public static string? Parent(string path)
+    {
+        var segments = Segments(path);
+        if (segments.Length <= 1)
+        {
+            return null;
+        }
+
+        var unc = path.Length >= 2 && IsSeparator(path[0]) && IsSeparator(path[1]);
+        return (unc ? "\\\\" : "") + string.Join('\\', segments[..^1]);
+    }
+
+    /// <summary>The extension including the leading dot, or null if there is none.</summary>
+    public static string? Extension(string path)
+    {
+        var name = FileName(path);
+        if (name is null)
+        {
+            return null;
+        }
+
+        var dot = name.LastIndexOf('.');
+
+        // A leading dot is a dotfile, not an extension.
+        return dot <= 0 || dot == name.Length - 1 ? null : name[dot..];
+    }
+
+    private static string[] Segments(string path) =>
+        string.IsNullOrWhiteSpace(path)
+            ? []
+            : path.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+
     private static bool IsSeparator(char c) => c is '\\' or '/';
 }
