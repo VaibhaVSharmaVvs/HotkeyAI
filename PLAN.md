@@ -518,15 +518,21 @@ The bulk of V1. With no planner, this *is* the product.
   only ever one implementation and nothing to keep byte-identical.
 - ✅ `HotkeyAI.Agent` — tray host, hotkey pump, executor with the full V1 primitive set,
   observer/postcondition checker, structured execution log.
-- ✅ `AuthoringBridge` — `FileSystemWatcher` on the automations folder, validate-on-change, and
-  the TOFU gate from control 4.
+- ⬜ `AuthoringBridge` — the TOFU gate from control 4 is done; the `FileSystemWatcher` is not.
+  Reload is explicit, from the tray or the dashboard. See Known gaps.
 - ✅ `HotkeyAI.Cli` — the five verbs. Build `validate` and `explain` first; they're what make
   external authoring work.
 - ✅ Safety controls 1–7, wired in from the start rather than retrofitted.
-- ✅ Store — automation JSON + SQLite for settings, versions, run history.
-- 📌 Autostart via a per-user Task Scheduler entry (not the Startup folder — survives policy
-  and allows a delayed trigger).
-- 📌 `CLAUDE.md` in the repo pointing at the generated schema and capability docs, so the
+- ⬜ Store — automation JSON is done, with approvals under DPAPI and the switched-off list beside
+  it. No SQLite: nothing yet needs versions or run history, and a database before there is a
+  question it answers is a liability. Revisit with Goal 3's version history.
+- ✅ Autostart, but **not** via Task Scheduler. `schtasks /Create /SC ONLOGON` is refused with
+  "Access is denied" for a non-elevated user on a default Windows 11 install, and elevation was
+  not an acceptable price for a hotkey tool. It is a per-user Run entry, which needs no rights,
+  is trivially reversible, and shows up in Task Manager's Startup tab — where software that reads
+  every keystroke ought to be visible. The delay the task was wanted for is moot: Run entries are
+  processed after the shell is up.
+- ✅ `CLAUDE.md` in the repo pointing at the generated schema and capability docs, so the
   authoring loop works from a cold start in a new session.
 
 **Exit criterion:** with Claude Code and nothing else, author the three reference automations
@@ -586,6 +592,86 @@ repaired via export → Claude Code → re-import, with the diff reviewed before
   Mode with the element tree, mouse/coordinate actions.
 
 ---
+
+## Known gaps at V1
+
+Recorded at the `v1.0.0` tag, so none of this is discovered again by surprise. Everything here is
+missing on purpose or unfinished for a stated reason — nothing is a mystery.
+
+### Hotkey capture in the UI
+
+A chord can only be set by editing a plan's JSON. The dashboard shows the trigger but cannot
+change it, and there is nowhere to check whether a combination is free before committing to it.
+
+This is the last unfinished item in Goal 2 and it is the most user-visible gap, because binding a
+key is the one thing the product is named after. The capture control needs the availability check
+from Phase 0 alongside it, and must be honest about what that check cannot know: a chord grabbed
+by a low-level keyboard hook reports as available and is not.
+
+### The reference automations have three defects on a real machine
+
+Found by running all eight on the author's desktop. Judged "working enough" to move on, and they
+are — but the reference automations are also the first-run examples, so a new user meets these
+first.
+
+1. `open-solution.json` searches `*.sln` and misses `.slnx`, which is the current format. On the
+   machine it was tested on, the only solution present is this repository's own `HotkeyAI.slnx`,
+   so the example finds nothing.
+2. `close-distractions.json` and `work-environment.json` target Slack and Discord. Teams is not in
+   the app registry at all, and the current build is the Store one — process `ms-teams`, at
+   `%LOCALAPPDATA%\Microsoft\WindowsApps\ms-teams.exe`, not the old `Teams.exe`.
+3. `work-environment.json` names `vscode` explicitly, so it launches VS Code for someone who uses
+   Cursor. Cursor is not in the registry either.
+
+The tension worth resolving before changing them: the examples are simultaneously the shipped
+first-run set *and* the regression corpus that enforces 100% action coverage. They should not be
+narrowed to one person's installed software, so the fix is a wider app registry rather than
+machine-specific plans.
+
+### `work-environment` rearranges windows you are using
+
+Working as designed — the plan says it reuses anything already open, and "set up my workspace"
+means arranging existing windows. It is still startling when it grabs a browser window mid-task.
+Deciding between "arrange everything" and "arrange only what I launched" is a product question,
+and the second option makes the automation useless on its second run of the day.
+
+### No folder watcher
+
+Dropping a plan into the automations folder does not pick it up. Reload is explicit, from the tray
+menu or the dashboard. The watcher was scoped in Goal 1 and is genuinely useful for authoring, but
+it interacts with the trust-on-first-use gate: a file appearing must never become live without a
+person reading it, so the watcher can only ever surface an approval prompt, never skip one.
+
+### `hotkeyai import` and `hotkeyai logs` are stubs
+
+Both report that they are not implemented. `logs` is now largely served by the tray's *View log*,
+and `import` was intended for pulling a plan from a file or the clipboard — which the dashboard's
+paste box has partly overtaken.
+
+### No planner in the application
+
+By design for V1: the LLM plans, the application executes, and in V1 the LLM is a person with
+Claude Code. The dashboard makes that explicit rather than pretending otherwise — it builds the
+prompt and takes the JSON back.
+
+V2 replaces the clipboard with an API call using the same schema for structured output, and needs
+three decisions that are the user's, not the code's:
+
+- **Where the API key lives.** DPAPI at user scope is the obvious answer, consistent with the
+  approval store, with the same honest caveat: it raises the bar rather than closing the door.
+- **Which model, and the accepted cost per generation.** Generation is once per automation, not
+  once per run, so the lifetime cost is small — but it must be shown before the call, not after.
+- **What happens to a generated plan.** It must go through validate → preview → approve exactly
+  as a hand-written one does. A plan the application wrote is not more trustworthy than a plan the
+  user wrote; if anything the argument runs the other way.
+
+### Untested, and honestly so
+
+- `send_keys` into an elevated window is refused rather than attempted, and the claim that it would
+  fail *silently* remains received wisdom. No elevated GUI window was available to confirm it.
+- Multi-monitor behaviour is arithmetically correct and exercised on one display only.
+- The `foreach` + `show_picker` combination has not been run over a list large enough to test the
+  overlay's scrolling under real data.
 
 ## Risk register
 
