@@ -9,8 +9,9 @@ if you're authoring automations.
 
 ## Status
 
-Goal 1 of 4. Hotkeys fire automations. Remaining: the tray UI, the authoring
-watcher, and autostart.
+**V1 is a working MVP** — tagged [`v1.0.0`](../../releases/tag/v1.0.0). A hotkey fires a
+validated plan, the engine runs and verifies it, and the agent sits in the tray. Every one of the
+25 primitives has executed against Win32 on a real desktop.
 
 | | |
 |---|---|
@@ -18,37 +19,55 @@ watcher, and autostart.
 | ✅ | Eight reference automations, **100% action-type coverage** |
 | ✅ | Schema checks + generated `docs/capabilities.md`, gated in CI |
 | ✅ | `HotkeyAI.Core` — 25 records, schema validator, bidirectional conformance test |
-| ✅ | `HotkeyAI.Cli` — `validate` (with `--json`), `explain`, `schema`, `apps`, `run` |
 | ✅ | `HotkeyAI.Core` — policy layer (bounds, allowed roots, variable dataflow) |
+| ✅ | `HotkeyAI.Core` — fuzzy ranking and the authoring prompt, both unit tested |
 | ✅ | `HotkeyAI.Engine` — executor, observer, safety controls, all 25 primitives |
+| ✅ | `HotkeyAI.Engine` — store with the trust-on-first-use gate and enable/disable |
 | ✅ | `HotkeyAI.Windows` — Win32 `IDesktop`: processes, windows, input, files, clipboard |
 | ✅ | `HotkeyAI.Windows` — hotkey pump with `MOD_NOREPEAT` and honest failure reporting |
-| ✅ | `HotkeyAI.Engine` — store with the trust-on-first-use gate |
-| ✅ | `HotkeyAI.Agent` — resident host, panic key, single-instance guard |
-| ⬜ | `HotkeyAI.Agent` — tray icon, folder watcher, Task Scheduler autostart |
-| ⬜ | `HotkeyAI.Cli` — `import` / `logs` (need the agent) |
-| ⬜ | `HotkeyAI.Ui` — automation list, plan preview, picker overlay |
+| ✅ | `HotkeyAI.Windows` — DPAPI approvals, autostart, monitor and foreground helpers |
+| ✅ | `HotkeyAI.Ui` — picker, input, confirm and toast overlays |
+| ✅ | `HotkeyAI.Ui` — tray icon and menu, and the dashboard |
+| ✅ | `HotkeyAI.Agent` — tray host, panic key, single-instance guard, daily log |
+| ✅ | `HotkeyAI.Agent` — autostart at login, and hotkey registration history |
+| ✅ | `HotkeyAI.Cli` — `validate`, `explain`, `schema`, `apps`, `run`, `list`, `approve`, `autostart` |
+| ⬜ | Hotkey capture in the UI — chords come from a plan's JSON today |
+| ⬜ | Folder watcher — automations reload when you ask, not automatically |
+| ⬜ | `HotkeyAI.Cli` — `import` / `logs` |
+| ⬜ | V2 — the in-app API planner |
 
-Author, inspect and run automations today:
+See **[Known gaps](PLAN.md#known-gaps-at-v1)** for what is missing and why it matters.
+
+Author, inspect and run automations:
 
 ```powershell
 dotnet run --project src/HotkeyAI.Cli -- explain  examples/project-launcher.json
 dotnet run --project src/HotkeyAI.Cli -- validate examples/project-launcher.json --json
 dotnet run --project src/HotkeyAI.Cli -- apps                    # what resolves here
 dotnet run --project src/HotkeyAI.Cli -- run examples/project-launcher.json --dry-run
-dotnet run --project src/HotkeyAI.Cli -- run examples/project-launcher.json
+dotnet run --project src/HotkeyAI.Cli -- run examples/project-launcher.json --ui
 ```
 
-And run the agent, which is what makes hotkeys live:
+Then install the agent, which is what makes hotkeys live. It is a windowed process, so anything
+console-shaped is a CLI verb:
 
 ```powershell
-dotnet run --project src/HotkeyAI.Agent -- --list          # state of every automation
-dotnet run --project src/HotkeyAI.Agent -- --approve-all    # read each plan, then approve
-dotnet run --project src/HotkeyAI.Agent                     # register hotkeys and listen
+dotnet publish src/HotkeyAI.Agent -c Release -o "$env:LOCALAPPDATA\HotkeyAI\app"
+dotnet publish src/HotkeyAI.Cli   -c Release -o "$env:LOCALAPPDATA\HotkeyAI\app"
+
+$app = "$env:LOCALAPPDATA\HotkeyAI\app"
+& "$app\hotkeyai.exe" list              # state of every automation
+& "$app\hotkeyai.exe" approve            # read each plan, then approve
+& "$app\hotkeyai.exe" autostart on       # start at login
+& "$app\hotkeyai-agent.exe"              # register hotkeys and listen
 ```
 
+The agent appears in the notification area. Windows 11 hides new tray icons behind the chevron —
+drag it onto the taskbar to pin it. Left-click opens the dashboard; right-click gives the menu.
+
 Nothing runs until you have read the plan and approved it. Approval is granted against the
-file's contents, so editing an automation makes it inert again until you re-approve.
+file's contents, so editing an automation makes it inert again until you re-approve. Switching an
+automation off is separate and does not withdraw approval.
 
 ## How it works
 
