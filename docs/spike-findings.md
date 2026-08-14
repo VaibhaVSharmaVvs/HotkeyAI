@@ -40,9 +40,47 @@ queue. No window handle is needed, but the owning thread must pump messages.
 | `CTRL+SHIFT` + letter | **P, T, W, Y taken** |
 | `CTRL+ALT+SHIFT` + letter | all 26 free |
 
+Those four are held by the machine owner's existing AutoHotkey scripts — `W` wallpaper
+slideshow, `P` project launcher, `T` terminal, `Y` YouTube. **The API never revealed that; a
+person had to say so.** It is the clearest possible demonstration of the point above: the
+registration failed with the same undifferentiated `1409` it returns for a shell-reserved
+combination, and no amount of probing would have named AutoHotkey.
+
+Note also that the AHK script on `CTRL+SHIFT+P` is a project launcher — the same job as
+`examples/project-launcher.json`. The overlap is not a coincidence; it is the use case.
+
 **One shipped example was broken by this.** `work-environment.json` used `CTRL+SHIFT+W`, which
 cannot register here. Changed to `CTRL+ALT+W`. Worth noting the reference automations are the
 first-run examples, so a trigger that fails to register is the first thing a new user sees.
+
+## A2. Coexistence with another hotkey app — a startup race
+
+Discovered from the above rather than probed for, and it matters more than anything else in
+spike A. `RegisterHotKey` is first-come-first-served across the whole session, and this machine
+already runs AutoHotkey at login. Both it and Hotkey AI will start automatically, so **whichever
+wins the race owns the combination for that boot** — and the loser gets no notification, because
+its registration simply fails.
+
+Two failure modes, both bad and both silent:
+
+- Hotkey AI starts first → the user's existing AutoHotkey shortcuts stop working, with nothing
+  to explain why.
+- AutoHotkey starts first → Hotkey AI's automation never fires, and the tray shows a healthy app.
+
+The concept's design assumed the app registers its hotkeys at startup and that this either works
+or produces an error the user sees. Neither is safe here. Requirements this imposes on the agent:
+
+1. **Report registration failures visibly at startup**, per automation, rather than logging them
+   and appearing healthy. An automation whose hotkey is not registered is not enabled, and the
+   list must say so.
+2. **Never silently retry or contend.** Retrying a first-come-first-served registration in a loop
+   is a war with the other app, and the user cannot tell who is winning.
+3. **Remember what registered last time.** The app cannot name the holder, but it *can* say "this
+   worked yesterday and does not today", which is the diagnosis that actually helps and which the
+   raw API cannot give.
+4. **Prefer a delayed autostart trigger.** Task Scheduler was already the chosen mechanism; a
+   short delay makes the race deterministic instead of arbitrary, and losing deliberately to an
+   app the user already relies on is better than winning by accident.
 
 ## B. Elevated-window detection
 

@@ -618,16 +618,28 @@ How to know each layer works, in the order the phases produce it.
   also covers `path_exists` postconditions, so a plan cannot use verification as a way to probe
   outside its roots.
 
-- **There is no way to write a file, and it shows.** Found while writing the reference
-  automations: a "capture this to a note" automation — a plausible real request — cannot be
-  expressed at all. `set_clipboard` plus a `notify` telling the user to paste is the honest
-  workaround (see `examples/new-branch-command.json`), but it is a workaround. A `write_file`
-  primitive, constrained to the configured allowed roots with an explicit no-overwrite-without-
-  confirmation rule, is the obvious V1.1 addition. **Deliberately not added yet** — the plan says
-  grow the primitive set only when a real request needs it, and I would rather that decision be
-  made explicitly than smuggled in during scaffolding. Note it interacts with safety control 4:
-  a plan that can write files can write to the automations folder, so `write_file` must be
-  barred from that path.
+- **Real requests have started hitting the edges of the primitive set.** The plan says grow it
+  only when a real request needs one; three have now arrived, and they are not all the same kind
+  of gap:
+
+  | Request | Gap | Severity |
+  |---|---|---|
+  | Capture clipboard to a note | no `write_file` | missing primitive |
+  | Open YouTube / open a terminal | none — expressible today | ✅ |
+  | Wallpaper slideshow *(existing AHK script)* | no `set_wallpaper`, **and no state between runs** | missing primitive **and** a design gap |
+
+  `write_file` is straightforward: constrain it to the allowed roots, refuse overwriting without
+  confirmation, and bar it from the automations folder outright, or a plan could rewrite its own
+  trigger and defeat safety control 4.
+
+  **The slideshow is the interesting one.** "Next wallpaper" means remembering which image was
+  used last, and the DSL has no state that survives a run — variables are born and die inside one
+  execution. That is a deliberate property (it is what makes a plan a pure function of its inputs,
+  and what makes it safe to re-run) so adding persistent state is not a small change; it would
+  need its own design, with a story for what happens when a plan is edited or rolled back. Worth
+  deciding on purpose rather than discovering halfway through implementing a slideshow.
+
+  **Deliberately not added yet.** All three are scope decisions, not scaffolding.
 
 - **Repair bundle format.** Plain Markdown block for pasting, versus a file that `cli` writes
   and Claude Code reads. The file is lower-friction; the clipboard is more obvious. Could ship
