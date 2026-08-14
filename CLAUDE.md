@@ -107,8 +107,13 @@ tests/      HotkeyAI.Core.Tests            conformance, validators, error qualit
 - **`HotkeyAI.Core` and `HotkeyAI.Engine` stay free of Windows dependencies.** The engine
   reaches the OS only through `IDesktop`, which is what makes the safety controls testable —
   step caps, the panic key, the sensitive-window guard and the path guard all have tests that
-  run on Linux CI. Anything touching Win32 belongs in `HotkeyAI.Agent`. If the CI build ever
-  needs a Windows runner, something has leaked.
+  run on Linux CI. Anything touching Win32 belongs in `HotkeyAI.Windows` or above it.
+  CI has two build jobs, and the split *is* the enforcement: `core-and-engine-on-linux` builds and
+  tests those four projects by name on Ubuntu, so a Windows reference creeping into either one
+  fails there immediately; `everything-on-windows` covers the Win32 layer, the overlays, the tray
+  and the dashboard. Adding a project to the Linux job, or referencing a Windows project from
+  Core or Engine, is the thing to refuse — not the existence of the Windows job, which V1's WPF
+  UI requires.
 - **Adding a primitive means teaching the executor too**, not just the schema and the renderer.
   `PlanExecutor.DispatchAsync` has a case per action; the fallback returns a failure naming the
   omission rather than silently doing nothing.
