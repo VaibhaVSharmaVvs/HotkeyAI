@@ -23,6 +23,14 @@ Intended outcome for V1: a tray-resident app where you can author, test, and rel
 personal automations bound to global hotkeys, reading the plan before anything executes,
 with version history and rollback when something breaks.
 
+**Who this is for, and what follows from it.** The user is someone who wants a hotkey to do
+something and does not know AutoHotkey — and should not have to learn it, or learn where the
+Startup folder is. That is the entire reason the product exists. It follows that Hotkey AI is
+**the only global hotkey manager on the machine**: a user running AutoHotkey scripts is by
+definition not the target user, so two managers is a configuration to resolve rather than a mode
+to support, and where they collide the other scripts go. This is a product decision and it lifts
+a real design burden off the agent — see `docs/spike-findings.md` § A2.
+
 The consequence worth naming: **V1 has no natural-language input surface at all.** The app
 is an engine plus an authoring bridge. That's the right trade — it removes the project's
 highest-risk item (plan quality from a constrained model) and defers it until the DSL has

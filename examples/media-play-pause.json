@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "Play / Pause",
+  "description": "Toggles playback in whichever application currently owns media playback — Spotify, a browser tab, a video player. Works when that application is minimised or on another desktop, and never needs to know which one it is.",
+  "trigger": {
+    "type": "hotkey",
+    "keys": ["CTRL", "ALT", "M"]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "send_appcommand",
+      "comment": "Broadcast the media key rather than finding and focusing a player window. This is the execution hierarchy in miniature: a system-level command beats locating a window and sending it keystrokes, and it keeps working when the player changes. Playback state is not observable, so this action is deliberately unverified.",
+      "command": "media_play_pause"
+    }
+  ]
+}

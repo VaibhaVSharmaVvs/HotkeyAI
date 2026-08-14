@@ -89,6 +89,16 @@ python tools/schema-checks/validate_examples.py .
 
 Full examples in [`examples/`](examples/).
 
+## Use one hotkey manager
+
+Hotkey AI expects to be the only global hotkey manager running. Windows hands a combination to
+whichever application asks for it first and tells the loser nothing useful, so a second manager —
+AutoHotkey, a vendor utility, a gaming overlay — produces shortcuts that silently stop working,
+on either side, with no way to tell which app is holding what.
+
+If you already run AutoHotkey for this, the answer is to retire the scripts that collide rather
+than to run both. Not knowing AutoHotkey is the reason this exists.
+
 ## A note on antivirus
 
 This app registers global hotkeys, synthesises keyboard input, and spawns processes — which is

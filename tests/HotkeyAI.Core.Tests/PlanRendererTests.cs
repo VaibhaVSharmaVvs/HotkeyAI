@@ -29,10 +29,10 @@ public sealed class PlanRendererTests
     [Fact]
     public void UnverifiedActionsAreCalledOut()
     {
-        // spotify-play-pause is a single send_appcommand: playback state is not observable, so
-        // it genuinely cannot be verified. The preview must say so rather than implying the
-        // engine confirmed anything.
-        var rendered = PlanRenderer.Explain(Load("spotify-play-pause.json"));
+        // media-play-pause is a single send_appcommand: playback state is not observable, so it
+        // genuinely cannot be verified. The preview must say so rather than implying the engine
+        // confirmed anything.
+        var rendered = PlanRenderer.Explain(Load("media-play-pause.json"));
 
         Assert.Contains("(unverified)", rendered, StringComparison.Ordinal);
         Assert.Contains("cannot confirm they had any effect", rendered, StringComparison.Ordinal);

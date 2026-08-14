@@ -53,34 +53,45 @@ Note also that the AHK script on `CTRL+SHIFT+P` is a project launcher — the sa
 cannot register here. Changed to `CTRL+ALT+W`. Worth noting the reference automations are the
 first-run examples, so a trigger that fails to register is the first thing a new user sees.
 
-## A2. Coexistence with another hotkey app — a startup race
+## A2. One hotkey manager — a product decision, not an engineering problem
 
-Discovered from the above rather than probed for, and it matters more than anything else in
-spike A. `RegisterHotKey` is first-come-first-served across the whole session, and this machine
-already runs AutoHotkey at login. Both it and Hotkey AI will start automatically, so **whichever
-wins the race owns the combination for that boot** — and the loser gets no notification, because
-its registration simply fails.
+This machine runs five AutoHotkey scripts, which is why four `CTRL+SHIFT` combinations and
+`CTRL+M` are taken. It is tempting to design for coexistence. **That would be designing around an
+accident of this machine.**
 
-Two failure modes, both bad and both silent:
+Hotkey AI exists so that someone who does not know AutoHotkey — and should not have to learn it,
+or learn where the Startup folder is — can bind an automation to a key. A user who is running
+AutoHotkey scripts is, by definition, not that person. Two global hotkey managers on one machine
+is a configuration to resolve, not a mode to support: **use one, and remove the scripts that
+collide.**
 
-- Hotkey AI starts first → the user's existing AutoHotkey shortcuts stop working, with nothing
-  to explain why.
-- AutoHotkey starts first → Hotkey AI's automation never fires, and the tray shows a healthy app.
+That said, registration will still fail sometimes — a shell-reserved combination, another
+application, a second instance of the agent — so the agent must handle failure well even though
+it does not handle *contention*:
 
-The concept's design assumed the app registers its hotkeys at startup and that this either works
-or produces an error the user sees. Neither is safe here. Requirements this imposes on the agent:
+1. **Report registration failures visibly at startup**, per automation. An automation whose
+   hotkey did not register is not enabled, and the list must say so rather than looking healthy.
+   This is the whole requirement in the one-manager world; the rest is diagnosis.
+2. **Never retry into contention.** `RegisterHotKey` is first-come-first-served, so a retry loop
+   is a war with another process that the user cannot see the score of.
+3. **Remember what registered last time.** The API cannot name the holder, but the app can say
+   "this worked yesterday and does not today" — the diagnosis that actually helps, and the one
+   thing here the raw API cannot provide.
 
-1. **Report registration failures visibly at startup**, per automation, rather than logging them
-   and appearing healthy. An automation whose hotkey is not registered is not enabled, and the
-   list must say so.
-2. **Never silently retry or contend.** Retrying a first-come-first-served registration in a loop
-   is a war with the other app, and the user cannot tell who is winning.
-3. **Remember what registered last time.** The app cannot name the holder, but it *can* say "this
-   worked yesterday and does not today", which is the diagnosis that actually helps and which the
-   raw API cannot give.
-4. **Prefer a delayed autostart trigger.** Task Scheduler was already the chosen mechanism; a
-   short delay makes the race deterministic instead of arbitrary, and losing deliberately to an
-   app the user already relies on is better than winning by accident.
+A delayed autostart trigger was on this list to lose the startup race deliberately. Under one
+manager that rationale is gone; a short delay may still be worth it for shell readiness at login,
+but that is a robustness question, not a coexistence one.
+
+### Caveat: availability is necessary, not sufficient
+
+All five of this machine's AutoHotkey bindings were detectable, because AutoHotkey used
+`RegisterHotKey` for them. It does not always: context-sensitive hotkeys fall back to a low-level
+keyboard hook, and a hook-grabbed combination is functionally taken while reporting as *available*
+to `RegisterHotKey`. Other apps do the same — push-to-talk in voice chat, for one.
+
+So the concept's `✓ Hotkey available` check is honest about what it knows and cannot promise more.
+If a registered hotkey never fires, a hook-based grabber upstream is the likely cause, and no API
+will reveal it.
 
 ## B. Elevated-window detection
 
