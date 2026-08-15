@@ -282,7 +282,7 @@ public sealed class DashboardWindow : Window
 
         detail.Children.Add(new TextBlock
         {
-            Text = entry.State,
+            Text = entry.LastRun is null ? entry.State : $"{entry.State}   ·   {entry.LastRun}",
             Foreground = entry.IsLive ? Palette.Muted : Palette.Danger,
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
@@ -304,6 +304,13 @@ public sealed class DashboardWindow : Window
         if (entry.NeedsApproval)
         {
             actions.Children.Add(Button("Review", () => Review(entry)));
+        }
+
+        // Only once it has actually run. Offering repair for an automation with no transcript
+        // would produce a prompt whose most useful section says "there is no transcript".
+        if (entry.LastRun is not null)
+        {
+            actions.Children.Add(Button("Repair", () => Repair(entry)));
         }
 
         var toggle = new CheckBox
@@ -409,6 +416,118 @@ public sealed class DashboardWindow : Window
             new System.Windows.Interop.WindowInteropHelper(window).Handle);
 
         window.Content = layout;
+        window.ShowDialog();
+    }
+
+    /// <summary>
+    /// Ask what went wrong, then hand over everything needed to fix it.
+    /// </summary>
+    /// <remarks>
+    /// The transcript is shown, not just attached. Half the time it answers the question on its
+    /// own — an action reported as unverified, or a step that failed because an application was
+    /// not running, is often the whole story, and reading it beats pasting it.
+    /// </remarks>
+    private void Repair(DashboardEntry entry)
+    {
+        var run = host.LastRun(entry.FileName);
+
+        var window = new Window
+        {
+            Title = $"Repair {entry.Name}",
+            Width = 760,
+            Height = 620,
+            Background = Palette.Surface,
+            Foreground = Palette.Text,
+            FontFamily = new FontFamily("Segoe UI"),
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+
+        var layout = new Grid { Margin = new Thickness(18) };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var caption = Label("What did it do, and what should it have done?");
+        Grid.SetRow(caption, 0);
+        layout.Children.Add(caption);
+
+        var complaint = Field(minLines: 3);
+        Grid.SetRow(complaint, 1);
+        layout.Children.Add(complaint);
+
+        var body = new StackPanel();
+
+        body.Children.Add(new TextBlock
+        {
+            Text = run is null ? "It has not run yet." : "The last run:",
+            Foreground = Palette.Muted,
+            FontSize = 11,
+            Margin = new Thickness(0, 12, 0, 4),
+        });
+
+        body.Children.Add(new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Margin = new Thickness(0, 0, 0, 8),
+            MaxHeight = 260,
+            Content = new TextBlock
+            {
+                Text = run?.Transcript ?? "",
+                Foreground = Palette.Muted,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+            },
+        });
+
+        Grid.SetRow(body, 2);
+        layout.Children.Add(body);
+
+        var said = new TextBlock
+        {
+            Foreground = Palette.Muted,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 8, 0, 0),
+        };
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 10, 0, 0),
+        };
+
+        buttons.Children.Add(Button("Close", window.Close));
+        buttons.Children.Add(Button("Copy repair prompt", () =>
+        {
+            try
+            {
+                Clipboard.SetText(host.BuildRepairPrompt(entry.FileName, complaint.Text));
+                said.Text = "Copied. Paste it into Claude Code in the Hotkey AI repository, then "
+                    + "bring the corrected JSON back to New automation below.";
+            }
+#pragma warning disable CA1031 // The clipboard is genuinely flaky; another app can hold it open.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                said.Text = $"Could not copy to the clipboard: {ex.Message}";
+            }
+        }));
+
+        var footer = new StackPanel();
+        footer.Children.Add(buttons);
+        footer.Children.Add(said);
+        Grid.SetRow(footer, 3);
+        layout.Children.Add(footer);
+
+        window.SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
+            new System.Windows.Interop.WindowInteropHelper(window).Handle);
+
+        window.Content = layout;
+        window.Loaded += (_, _) => complaint.Focus();
         window.ShowDialog();
     }
 

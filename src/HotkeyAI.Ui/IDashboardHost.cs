@@ -11,6 +11,7 @@ namespace HotkeyAI.Ui;
 /// <param name="IsLive">Enabled, approved, valid, and holding its hotkey right now.</param>
 /// <param name="NeedsApproval">True when reading and approving is what unblocks it.</param>
 /// <param name="Preview">The rendered plan, shown before approving.</param>
+/// <param name="LastRun">A short description of the last run, or null if it has not run.</param>
 public sealed record DashboardEntry(
     string FileName,
     string Name,
@@ -19,7 +20,16 @@ public sealed record DashboardEntry(
     bool IsEnabled,
     bool IsLive,
     bool NeedsApproval,
-    string Preview);
+    string Preview,
+    string? LastRun = null);
+
+/// <summary>What happened the last time an automation ran.</summary>
+/// <param name="When">When it ran.</param>
+/// <param name="Succeeded">Whether it finished without failing.</param>
+/// <param name="Unverified">How many actions ran without the engine confirming any effect.</param>
+/// <param name="Transcript">The execution log, verbatim.</param>
+public sealed record RunRecord(
+    DateTimeOffset When, bool Succeeded, int Unverified, string Transcript);
 
 /// <summary>What probing a chord found out.</summary>
 /// <param name="CanBind">Whether saving this chord would work.</param>
@@ -91,6 +101,23 @@ public interface IDashboardHost
     /// </summary>
     /// <returns>Null on success, or the reason it was refused.</returns>
     string? SetHotkey(string fileName, IReadOnlyList<KeyName> keys);
+
+    /// <summary>
+    /// What happened the last time this automation ran, or null if it has not run.
+    /// </summary>
+    /// <remarks>
+    /// Held in memory only. A run that happened before the agent was last started is in the log
+    /// file, but reading a transcript back out of a text log means parsing it, and a repair
+    /// prompt built from a misparsed log is worse than one that admits it has nothing.
+    /// </remarks>
+    RunRecord? LastRun(string fileName);
+
+    /// <summary>
+    /// The prompt to paste into Claude Code to get a broken automation fixed.
+    /// </summary>
+    /// <param name="fileName">Which automation.</param>
+    /// <param name="complaint">What the user says went wrong.</param>
+    string BuildRepairPrompt(string fileName, string complaint);
 
     /// <summary>
     /// Release every hotkey until the returned handle is disposed.

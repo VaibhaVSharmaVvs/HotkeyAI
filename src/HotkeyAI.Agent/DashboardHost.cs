@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -28,8 +29,45 @@ internal sealed class DashboardHost(
     Action rebind,
     Func<IReadOnlyList<KeyName>, RegistrationResult> probe,
     Func<IDisposable> suspendHotkeys,
-    IReadOnlyList<KeyName> panicChord) : IDashboardHost
+    IReadOnlyList<KeyName> panicChord,
+    IReadOnlyDictionary<string, RunRecord> lastRuns) : IDashboardHost
 {
+    public RunRecord? LastRun(string fileName) => lastRuns.GetValueOrDefault(fileName);
+
+    /// <summary>
+    /// Assemble everything needed to get an automation fixed.
+    /// </summary>
+    /// <remarks>
+    /// The whole value of this is that the user does not have to gather any of it. They know what
+    /// they expected; they do not have the plan's JSON to hand, cannot recall which step failed,
+    /// and would never think to mention that three actions ran unverified — which is frequently
+    /// the actual fault.
+    /// </remarks>
+    public string BuildRepairPrompt(string fileName, string complaint)
+    {
+        var automation = store.Load(AgentPaths.Automations)
+            .FirstOrDefault(a =>
+                string.Equals(a.FileName, fileName, StringComparison.OrdinalIgnoreCase));
+
+        if (automation is null)
+        {
+            return $"{fileName} is no longer in the automations folder.";
+        }
+
+        string json;
+
+        try
+        {
+            json = File.ReadAllText(automation.Path);
+        }
+        catch (IOException ex)
+        {
+            return $"Could not read {fileName}: {ex.Message}";
+        }
+
+        return RepairPrompt.For(fileName, json, LastRun(fileName)?.Transcript, complaint ?? "");
+    }
+
     public IDisposable SuspendHotkeys() => suspendHotkeys();
 
     public bool AutostartEnabled
@@ -57,7 +95,8 @@ internal sealed class DashboardHost(
             a.IsEnabled,
             a.IsRunnable,
             a.Status != ApprovalStatus.Approved && a.Validation.IsValid && a.Plan is not null,
-            a.Plan is { } p ? PlanRenderer.Explain(p) : Problems(a))),
+            a.Plan is { } p ? PlanRenderer.Explain(p) : Problems(a),
+            Describe(LastRun(a.FileName)))),
     ];
 
     public void SetEnabled(string fileName, bool enabled)
@@ -314,6 +353,36 @@ internal sealed class DashboardHost(
 
     private static bool Same(IReadOnlyList<KeyName> a, IReadOnlyList<KeyName> b) =>
         a.Count == b.Count && a.SequenceEqual(b);
+
+    /// <summary>The last run in a few words, for the row.</summary>
+    private static string? Describe(RunRecord? run)
+    {
+        if (run is null)
+        {
+            return null;
+        }
+
+        var ago = DateTimeOffset.Now - run.When;
+
+        var when = ago.TotalMinutes switch
+        {
+            < 1 => "just now",
+            < 60 => $"{(int)ago.TotalMinutes} min ago",
+            < 24 * 60 => $"{(int)ago.TotalHours} h ago",
+            _ => run.When.ToString("d MMM", CultureInfo.InvariantCulture),
+        };
+
+        // Unverified is called out rather than folded into "ok", because an automation that
+        // reports success while doing nothing is the failure this product is most prone to.
+        var outcome = run switch
+        {
+            { Succeeded: false } => "failed",
+            { Unverified: > 0 } => $"ran, {run.Unverified} unverified",
+            _ => "ran",
+        };
+
+        return $"last run {when} — {outcome}";
+    }
 
     private static string Problems(StoredAutomation automation) =>
         automation.Validation.Errors.Count == 0
