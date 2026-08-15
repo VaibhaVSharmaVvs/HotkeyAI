@@ -24,6 +24,9 @@ public static class AgentPaths
     /// <summary>Automations the user has switched off.</summary>
     public static string Disabled { get; } = Path.Combine(Root, "disabled.json");
 
+    /// <summary>What the user says about whether each automation actually works.</summary>
+    public static string Health { get; } = Path.Combine(Root, "health.json");
+
     /// <summary>Which hotkeys last registered successfully, and when.</summary>
     public static string HotkeyHistory { get; } = Path.Combine(Root, "hotkeys.json");
 

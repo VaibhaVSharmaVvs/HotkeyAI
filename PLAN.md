@@ -564,6 +564,32 @@ mid-flight.
 **Exit criterion:** an unsigned automation dropped in the folder surfaces an approval prompt
 showing the correct rendered plan, and can be enabled, run, and disabled from the UI.
 
+### Two kinds of verified, and why only one of them is the engine's
+
+The engine can check *effects*: a postcondition says a process is running, a window exists, the
+clipboard contains a string. Five things, and no more — an action without one is reported as
+**unverified**, meaning it ran and the engine cannot confirm it had any effect.
+
+What the engine can never check is *intent*. "Did this automation do what I meant?" is not a
+property of the machine state, and no number of postconditions gets at it: a plan can pass every
+check it carries and still open the wrong folder. Only the person who wrote it knows.
+
+So there are two claims, and they are kept apart deliberately:
+
+| | Who makes it | About what | Where it appears |
+|---|---|---|---|
+| **unverified** | the engine | one action, per run | the transcript, the plan preview |
+| **not tested / works / not working** | the user | the whole automation | the dashboard, `hotkeyai list` |
+
+The user's verdict is recorded against the plan's content hash, exactly as approval is, so editing
+a plan drops it back to *not tested* — "I tested this" cannot outlive the thing that was tested.
+It deliberately does **not** gate execution: you have to run an automation to find out whether it
+still misbehaves, and this must never become another reason a hotkey quietly stops firing.
+
+Marking one as *not working* opens the repair dialog immediately, because the moment someone
+decides something is broken is the moment they can say what is wrong with it. What they type is
+kept against the automation and pre-fills the box next time.
+
 ### 🎯 Goal 3 — Test, repair, regression suite (≈1.5 weeks)
 
 - ✅ Test-run mode as a first-class feature — timestamped log exactly as the concept sketches,

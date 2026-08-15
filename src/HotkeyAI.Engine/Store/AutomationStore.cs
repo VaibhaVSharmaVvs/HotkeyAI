@@ -29,6 +29,8 @@ public enum ApprovalStatus
 /// <param name="Validation">Result of both validation layers.</param>
 /// <param name="ContentHash">SHA-256 of the file, which is what approval is granted against.</param>
 /// <param name="IsEnabled">Whether the user has this one switched on.</param>
+/// <param name="Health">Whether a person has confirmed it does what they meant.</param>
+/// <param name="HealthNote">What the user said was wrong, when they said it was.</param>
 public sealed record StoredAutomation(
     string FileName,
     string Path,
@@ -36,7 +38,9 @@ public sealed record StoredAutomation(
     ApprovalStatus Status,
     ValidationResult Validation,
     string ContentHash,
-    bool IsEnabled = true)
+    bool IsEnabled = true,
+    AutomationHealth Health = AutomationHealth.Untested,
+    string? HealthNote = null)
 {
     /// <summary>
     /// Whether this automation may have a hotkey registered and be allowed to run.
@@ -120,7 +124,8 @@ public interface IApprovalStorage
 public sealed class AutomationStore(
     IApprovalStorage approvals,
     PolicyOptions? policy = null,
-    IDisabledStorage? disabled = null)
+    IDisabledStorage? disabled = null,
+    IHealthStorage? health = null)
 {
     private readonly PolicyOptions policy = policy ?? PolicyOptions.Default;
 
@@ -134,11 +139,14 @@ public sealed class AutomationStore(
 
         var approved = approvals.Read();
         var off = disabled?.Read() ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var verdicts = health?.Read()
+            ?? new Dictionary<string, HealthRecord>(StringComparer.OrdinalIgnoreCase);
+
         var found = new List<StoredAutomation>();
 
         foreach (var path in Directory.EnumerateFiles(directory, "*.json").Order(StringComparer.Ordinal))
         {
-            found.Add(Classify(path, approved, off));
+            found.Add(Classify(path, approved, off, verdicts));
         }
 
         return found;
@@ -180,6 +188,39 @@ public sealed class AutomationStore(
         }
     }
 
+    /// <summary>
+    /// Record what the user says about whether this automation actually works.
+    /// </summary>
+    /// <remarks>
+    /// Recorded against the current content hash, so the verdict is about a specific version of
+    /// the plan and is dropped the moment that version changes. It deliberately does not gate
+    /// execution: you have to run an automation to find out whether it works, and marking one as
+    /// broken must not become a fourth reason a hotkey silently stops firing.
+    /// </remarks>
+    public void SetHealth(StoredAutomation automation, AutomationHealth state, string? note = null)
+    {
+        ArgumentNullException.ThrowIfNull(automation);
+
+        if (health is null)
+        {
+            return;
+        }
+
+        var updated = new Dictionary<string, HealthRecord>(health.Read(), StringComparer.OrdinalIgnoreCase);
+
+        if (state == AutomationHealth.Untested)
+        {
+            updated.Remove(automation.FileName);
+        }
+        else
+        {
+            updated[automation.FileName] =
+                new HealthRecord(state, automation.ContentHash, DateTimeOffset.Now, note);
+        }
+
+        health.Write(updated);
+    }
+
     /// <summary>Withdraw approval, making the automation inert again.</summary>
     public void Revoke(string fileName)
     {
@@ -206,7 +247,10 @@ public sealed class AutomationStore(
     }
 
     private StoredAutomation Classify(
-        string path, IReadOnlyDictionary<string, string> approved, IReadOnlySet<string> off)
+        string path,
+        IReadOnlyDictionary<string, string> approved,
+        IReadOnlySet<string> off,
+        IReadOnlyDictionary<string, HealthRecord> verdicts)
     {
         var fileName = Path.GetFileName(path);
         string content;
@@ -252,7 +296,24 @@ public sealed class AutomationStore(
             }
         }
 
+        // A verdict recorded against different content is stale. Discarding it rather than
+        // carrying it over is the same rule approval follows, and for the same reason: "I tested
+        // this" cannot outlive the thing that was tested.
+        var verdict = verdicts.GetValueOrDefault(fileName);
+        var current = verdict is not null
+            && string.Equals(verdict.ContentHash, hash, StringComparison.OrdinalIgnoreCase)
+                ? verdict
+                : null;
+
         return new StoredAutomation(
-            fileName, path, plan, status, validation, hash, !off.Contains(fileName));
+            fileName,
+            path,
+            plan,
+            status,
+            validation,
+            hash,
+            !off.Contains(fileName),
+            current?.State ?? AutomationHealth.Untested,
+            current?.Note);
     }
 }

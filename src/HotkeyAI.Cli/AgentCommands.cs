@@ -49,7 +49,21 @@ internal static class AgentCommands
             var state = automation.Blocker ?? "approved";
             var marker = automation.IsRunnable ? "  ok  " : "  --  ";
 
-            Console.WriteLine($"{marker}{automation.FileName,-30} {chord,-22} {state}");
+            // The user's verdict, which is a different claim from anything above: those say
+            // whether it may run, this says whether it does what they meant.
+            var verdict = automation.Health switch
+            {
+                AutomationHealth.Works => "works",
+                AutomationHealth.NotWorking => "NOT WORKING",
+                _ => "not tested",
+            };
+
+            Console.WriteLine($"{marker}{automation.FileName,-30} {chord,-22} {verdict,-12} {state}");
+
+            if (automation.HealthNote is { Length: > 0 } note)
+            {
+                Console.WriteLine($"        \"{note}\"");
+            }
 
             if (automation.Blocker is not null && !automation.Validation.IsValid)
             {
@@ -167,10 +181,5 @@ internal static class AgentCommands
 
     private static IReadOnlyList<StoredAutomation> Load() => Store().Load(AgentPaths.Automations);
 
-    private static AutomationStore Store() => new(
-        new DpapiApprovalStorage(AgentPaths.Approvals),
-        PolicyOptions.Default with
-        {
-            AllowedRoots = [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)],
-        });
+    private static AutomationStore Store() => AgentStore.Open();
 }
