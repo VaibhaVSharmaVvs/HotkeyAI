@@ -96,8 +96,41 @@ internal sealed class DashboardHost(
             a.IsRunnable,
             a.Status != ApprovalStatus.Approved && a.Validation.IsValid && a.Plan is not null,
             a.Plan is { } p ? PlanRenderer.Explain(p) : Problems(a),
-            Describe(LastRun(a.FileName)))),
+            Describe(LastRun(a.FileName)),
+            a.Health switch
+            {
+                AutomationHealth.Works => HealthState.Works,
+                AutomationHealth.NotWorking => HealthState.NotWorking,
+                _ => HealthState.Untested,
+            },
+            a.HealthNote)),
     ];
+
+    public void SetHealth(string fileName, HealthState state, string? note)
+    {
+        var automation = store.Load(AgentPaths.Automations)
+            .FirstOrDefault(a =>
+                string.Equals(a.FileName, fileName, StringComparison.OrdinalIgnoreCase));
+
+        if (automation is null)
+        {
+            return;
+        }
+
+        store.SetHealth(
+            automation,
+            state switch
+            {
+                HealthState.Works => AutomationHealth.Works,
+                HealthState.NotWorking => AutomationHealth.NotWorking,
+                _ => AutomationHealth.Untested,
+            },
+            note);
+
+        AgentLog.Line($"{fileName} marked {state}{(note is { Length: > 0 } ? $": {note}" : "")}.");
+
+        // No rebind. This is an opinion, not a permission — nothing about what may run changed.
+    }
 
     public void SetEnabled(string fileName, bool enabled)
     {

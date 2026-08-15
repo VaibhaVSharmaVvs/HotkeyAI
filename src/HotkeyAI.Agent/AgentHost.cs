@@ -114,15 +114,10 @@ public static class AgentHost
 
         Directory.CreateDirectory(AgentPaths.Automations);
 
-        var policy = PolicyOptions.Default with
-        {
-            AllowedRoots = [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)],
-        };
-
-        var store = new AutomationStore(
-            new DpapiApprovalStorage(AgentPaths.Approvals),
-            policy,
-            new JsonDisabledStorage(AgentPaths.Disabled));
+        // Both this and the CLI open the store through one factory. Assembling it in two places
+        // is how the CLI ended up blind to two of the four storages.
+        var policy = AgentStore.Policy;
+        var store = AgentStore.Open();
         var history = new RegistrationHistory(AgentPaths.HotkeyHistory);
         var loaded = store.Load(AgentPaths.Automations);
 

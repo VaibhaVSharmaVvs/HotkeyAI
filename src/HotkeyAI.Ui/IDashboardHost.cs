@@ -12,6 +12,8 @@ namespace HotkeyAI.Ui;
 /// <param name="NeedsApproval">True when reading and approving is what unblocks it.</param>
 /// <param name="Preview">The rendered plan, shown before approving.</param>
 /// <param name="LastRun">A short description of the last run, or null if it has not run.</param>
+/// <param name="Health">The user's verdict on whether it works.</param>
+/// <param name="HealthNote">What they said was wrong, if they said anything.</param>
 public sealed record DashboardEntry(
     string FileName,
     string Name,
@@ -21,7 +23,29 @@ public sealed record DashboardEntry(
     bool IsLive,
     bool NeedsApproval,
     string Preview,
-    string? LastRun = null);
+    string? LastRun = null,
+    HealthState Health = HealthState.Untested,
+    string? HealthNote = null);
+
+/// <summary>
+/// Whether a person has confirmed an automation does what they meant.
+/// </summary>
+/// <remarks>
+/// Not the same claim as the engine's "unverified", which is about whether a single action could
+/// be checked. This is about whether the automation as a whole did the right thing, which no
+/// amount of postconditions can establish.
+/// </remarks>
+public enum HealthState
+{
+    /// <summary>Never confirmed, or confirmed against a version that has since changed.</summary>
+    Untested,
+
+    /// <summary>The user has run it and says it does what they wanted.</summary>
+    Works,
+
+    /// <summary>The user has run it and says it does not.</summary>
+    NotWorking,
+}
 
 /// <summary>What happened the last time an automation ran.</summary>
 /// <param name="When">When it ran.</param>
@@ -101,6 +125,16 @@ public interface IDashboardHost
     /// </summary>
     /// <returns>Null on success, or the reason it was refused.</returns>
     string? SetHotkey(string fileName, IReadOnlyList<KeyName> keys);
+
+    /// <summary>
+    /// Record whether the user says this automation works.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does not affect whether it runs. You have to run an automation to find out
+    /// whether it still misbehaves, and this must never become another reason a hotkey quietly
+    /// stops firing.
+    /// </remarks>
+    void SetHealth(string fileName, HealthState state, string? note);
 
     /// <summary>
     /// What happened the last time this automation ran, or null if it has not run.

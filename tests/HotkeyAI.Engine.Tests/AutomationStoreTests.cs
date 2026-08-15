@@ -23,6 +23,8 @@ public sealed class AutomationStoreTests : IDisposable
 
     private readonly FakeDisabled disabled = new();
 
+    private readonly FakeHealth health = new();
+
     private static readonly PolicyOptions Policy = PolicyOptions.Default with
     {
         AllowedRoots = [@"C:\Users\test"],
@@ -66,6 +68,16 @@ public sealed class AutomationStoreTests : IDisposable
             off = new HashSet<string>(disabled, StringComparer.OrdinalIgnoreCase);
     }
 
+    private sealed class FakeHealth : IHealthStorage
+    {
+        private Dictionary<string, HealthRecord> records = new(StringComparer.OrdinalIgnoreCase);
+
+        public IReadOnlyDictionary<string, HealthRecord> Read() => records;
+
+        public void Write(IReadOnlyDictionary<string, HealthRecord> health) =>
+            records = new Dictionary<string, HealthRecord>(health, StringComparer.OrdinalIgnoreCase);
+    }
+
     private string WritePlan(string name, string trigger = @"[""CTRL"",""ALT"",""P""]", string extra = "")
     {
         var path = Path.Combine(directory, name);
@@ -81,7 +93,7 @@ public sealed class AutomationStoreTests : IDisposable
         return path;
     }
 
-    private AutomationStore Store() => new(approvals, Policy, disabled);
+    private AutomationStore Store() => new(approvals, Policy, disabled, health);
 
     // ------------------------------- the gate -------------------------------
 
@@ -325,5 +337,126 @@ public sealed class AutomationStoreTests : IDisposable
         store.Approve(store.Load(directory)[0]);
 
         Assert.True(store.Load(directory)[0].IsEnabled);
+    }
+
+    // ------------------------------- does it actually work -------------------------------
+
+    [Fact]
+    public void AnAutomationStartsUntested()
+    {
+        // The engine can say an action ran. Only a person can say the automation did what they
+        // meant, and until they have, claiming otherwise would be the product lying about the one
+        // thing it cannot know.
+        WritePlan("mine.json");
+
+        Assert.Equal(AutomationHealth.Untested, Store().Load(directory)[0].Health);
+    }
+
+    [Fact]
+    public void TheUserCanSayItWorks()
+    {
+        WritePlan("mine.json");
+        var store = Store();
+
+        store.SetHealth(store.Load(directory)[0], AutomationHealth.Works);
+
+        Assert.Equal(AutomationHealth.Works, store.Load(directory)[0].Health);
+    }
+
+    [Fact]
+    public void TheUserCanSayItDoesNotWorkAndWhy()
+    {
+        WritePlan("mine.json");
+        var store = Store();
+
+        store.SetHealth(
+            store.Load(directory)[0], AutomationHealth.NotWorking, "opens the wrong folder");
+
+        var automation = store.Load(directory)[0];
+        Assert.Equal(AutomationHealth.NotWorking, automation.Health);
+        Assert.Equal("opens the wrong folder", automation.HealthNote);
+    }
+
+    [Fact]
+    public void EditingThePlanDiscardsTheVerdict()
+    {
+        // The whole reason the verdict is recorded against a content hash. "I tested this" is a
+        // statement about a specific plan, and carrying it across an edit would let a changed
+        // automation inherit confidence nobody ever gave it.
+        var path = WritePlan("mine.json");
+        var store = Store();
+        store.SetHealth(store.Load(directory)[0], AutomationHealth.Works);
+
+        File.WriteAllText(path, File.ReadAllText(path).Replace("hello", "goodbye", StringComparison.Ordinal));
+
+        Assert.Equal(AutomationHealth.Untested, store.Load(directory)[0].Health);
+    }
+
+    [Fact]
+    public void RestoringThePlanRestoresTheVerdict()
+    {
+        // The mirror of the rule above, and the same behaviour approval has: the verdict is about
+        // content, so identical content is the thing that was tested.
+        var path = WritePlan("mine.json");
+        var original = File.ReadAllText(path);
+        var store = Store();
+        store.SetHealth(store.Load(directory)[0], AutomationHealth.Works);
+
+        File.WriteAllText(path, original.Replace("hello", "goodbye", StringComparison.Ordinal));
+        File.WriteAllText(path, original);
+
+        Assert.Equal(AutomationHealth.Works, store.Load(directory)[0].Health);
+    }
+
+    [Fact]
+    public void SayingItIsBrokenDoesNotStopItRunning()
+    {
+        // Load-bearing. You have to run an automation to find out whether it still misbehaves,
+        // and this must never become a fourth reason a hotkey quietly stops firing.
+        WritePlan("mine.json");
+        var store = Store();
+        store.Approve(store.Load(directory)[0]);
+
+        store.SetHealth(store.Load(directory)[0], AutomationHealth.NotWorking, "wrong window");
+
+        var automation = store.Load(directory)[0];
+        Assert.True(automation.IsRunnable);
+        Assert.Null(automation.Blocker);
+    }
+
+    [Fact]
+    public void AVerdictCanBeWithdrawn()
+    {
+        WritePlan("mine.json");
+        var store = Store();
+        store.SetHealth(store.Load(directory)[0], AutomationHealth.Works);
+
+        store.SetHealth(store.Load(directory)[0], AutomationHealth.Untested);
+
+        Assert.Equal(AutomationHealth.Untested, store.Load(directory)[0].Health);
+    }
+
+    [Fact]
+    public void AVerdictIsPerAutomation()
+    {
+        WritePlan("one.json");
+        WritePlan("two.json", @"[""CTRL"",""ALT"",""Q""]");
+        var store = Store();
+        var loaded = store.Load(directory).OrderBy(a => a.FileName, StringComparer.Ordinal).ToList();
+
+        store.SetHealth(loaded[0], AutomationHealth.Works);
+
+        var after = store.Load(directory).OrderBy(a => a.FileName, StringComparer.Ordinal).ToList();
+        Assert.Equal(AutomationHealth.Works, after[0].Health);
+        Assert.Equal(AutomationHealth.Untested, after[1].Health);
+    }
+
+    [Fact]
+    public void AStoreWithNoHealthStorageReportsEverythingUntested()
+    {
+        WritePlan("mine.json");
+        var store = new AutomationStore(approvals, Policy);
+
+        Assert.Equal(AutomationHealth.Untested, store.Load(directory)[0].Health);
     }
 }

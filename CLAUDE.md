@@ -160,6 +160,11 @@ dotnet run --project src/HotkeyAI.Cli -- list                 # what is installe
 dotnet run --project src/HotkeyAI.Cli -- approve              # review and approve pending plans
 dotnet run --project src/HotkeyAI.Cli -- autostart on|off|status
 
+# publishing: always both, into one folder. They share HotkeyAI.Engine.dll, so publishing one
+# leaves the other bound to a stale copy and it dies with MissingMethodException.
+dotnet publish src/HotkeyAI.Agent -c Release -o "$env:LOCALAPPDATA\HotkeyAI\app"
+dotnet publish src/HotkeyAI.Cli   -c Release -o "$env:LOCALAPPDATA\HotkeyAI\app"
+
 # whole-repo checks (both run in CI)
 python tools/schema-checks/check_schema.py schema/hotkeyai-dsl-v1.schema.json
 python tools/schema-checks/validate_examples.py .

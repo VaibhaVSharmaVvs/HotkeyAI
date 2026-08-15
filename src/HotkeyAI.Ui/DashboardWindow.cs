@@ -282,6 +282,26 @@ public sealed class DashboardWindow : Window
 
         detail.Children.Add(new TextBlock
         {
+            Text = entry.Health switch
+            {
+                HealthState.Works => "  ✓ works",
+                HealthState.NotWorking => "  ✗ not working",
+                _ => "  · not tested",
+            },
+            Foreground = entry.Health switch
+            {
+                HealthState.Works => Palette.Accent,
+                HealthState.NotWorking => Palette.Danger,
+                _ => Palette.Muted,
+            },
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+            ToolTip = entry.HealthNote,
+        });
+
+        detail.Children.Add(new TextBlock
+        {
             Text = entry.LastRun is null ? entry.State : $"{entry.State}   ·   {entry.LastRun}",
             Foreground = entry.IsLive ? Palette.Muted : Palette.Danger,
             FontSize = 11,
@@ -305,6 +325,11 @@ public sealed class DashboardWindow : Window
         {
             actions.Children.Add(Button("Review", () => Review(entry)));
         }
+
+        // The two halves of "does this actually do what I meant?". Clicking the verdict an
+        // automation already has withdraws it, so a wrong click is one click to undo.
+        actions.Children.Add(Verdict("Works", entry, HealthState.Works));
+        actions.Children.Add(Verdict("Not working", entry, HealthState.NotWorking));
 
         // Only once it has actually run. Offering repair for an automation with no transcript
         // would produce a prompt whose most useful section says "there is no transcript".
@@ -420,6 +445,59 @@ public sealed class DashboardWindow : Window
     }
 
     /// <summary>
+    /// One of the two verdict buttons, highlighted when it is the current verdict.
+    /// </summary>
+    /// <remarks>
+    /// Marking an automation as not working goes straight on to the repair dialog. That is the
+    /// whole point of recording the verdict: the moment a user decides something is broken is the
+    /// moment they know what is wrong with it, and asking them again later gets a vaguer answer.
+    /// </remarks>
+    private Button Verdict(string text, DashboardEntry entry, HealthState state)
+    {
+        var active = entry.Health == state;
+
+        var button = new Button
+        {
+            Content = text,
+            Foreground = active
+                ? (state == HealthState.Works ? Palette.Accent : Palette.Danger)
+                : Palette.Muted,
+            Background = active ? Palette.Selection : Palette.Edge,
+            BorderBrush = active
+                ? (state == HealthState.Works ? Palette.Accent : Palette.Danger)
+                : Palette.Edge,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 3, 8, 3),
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 11,
+            Cursor = System.Windows.Input.Cursors.Hand,
+        };
+
+        button.Click += (_, _) =>
+        {
+            // Clicking the current verdict withdraws it rather than reasserting it.
+            var next = active ? HealthState.Untested : state;
+            host.SetHealth(entry.FileName, next, next == state ? entry.HealthNote : null);
+            Refresh();
+
+            if (next == HealthState.NotWorking)
+            {
+                Repair(entry with { Health = next });
+            }
+            else
+            {
+                Say(next switch
+                {
+                    HealthState.Works => $"{entry.Name} marked as working.",
+                    _ => $"{entry.Name} is untested again.",
+                });
+            }
+        };
+
+        return button;
+    }
+
+    /// <summary>
     /// Ask what went wrong, then hand over everything needed to fix it.
     /// </summary>
     /// <remarks>
@@ -454,6 +532,7 @@ public sealed class DashboardWindow : Window
         layout.Children.Add(caption);
 
         var complaint = Field(minLines: 3);
+        complaint.Text = entry.HealthNote ?? "";
         Grid.SetRow(complaint, 1);
         layout.Children.Add(complaint);
 
@@ -506,6 +585,15 @@ public sealed class DashboardWindow : Window
             try
             {
                 Clipboard.SetText(host.BuildRepairPrompt(entry.FileName, complaint.Text));
+
+                // Keep what they wrote against the automation. It is the same sentence they would
+                // otherwise have to remember and retype the next time they look at this row.
+                if (entry.Health == HealthState.NotWorking && complaint.Text.Trim().Length > 0)
+                {
+                    host.SetHealth(entry.FileName, HealthState.NotWorking, complaint.Text.Trim());
+                    Refresh();
+                }
+
                 said.Text = "Copied. Paste it into Claude Code in the Hotkey AI repository, then "
                     + "bring the corrected JSON back to New automation below.";
             }
