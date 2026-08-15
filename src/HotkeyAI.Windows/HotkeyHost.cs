@@ -95,6 +95,52 @@ public sealed class HotkeyHost : IDisposable
         });
     }
 
+    /// <summary>
+    /// Ask whether a chord could be registered right now, without keeping it.
+    /// </summary>
+    /// <remarks>
+    /// Registers and immediately unregisters on the pump thread, because that is the only way to
+    /// find out: there is no query API, and <c>RegisterHotKey</c> binds to the calling thread, so
+    /// probing from anywhere else would answer a different question.
+    /// <para>
+    /// Two things this cannot tell you, both from the Phase 0 spike. It cannot name whoever holds
+    /// a taken chord — every failure is the same undifferentiated 1409, whether the holder is
+    /// another application or the shell. And a combination grabbed by a low-level keyboard hook,
+    /// which is how context-sensitive AutoHotkey bindings and push-to-talk work, reports as
+    /// <i>available</i> here and then never fires. Availability is necessary, not sufficient.
+    /// </para>
+    /// <para>
+    /// A chord this host already holds reports as taken, which is true but unhelpful on its own —
+    /// the caller knows its own bindings and should check those first so it can name the
+    /// automation involved.
+    /// </para>
+    /// </remarks>
+    public RegistrationResult Probe(IReadOnlyList<KeyName> chord)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+
+        if (!KeyCodes.TrySplit(chord, out var modifiers, out var key))
+        {
+            return new RegistrationResult(false, false, 0);
+        }
+
+        return Invoke(() =>
+        {
+            // An id that cannot collide with a live registration, since nextId only ever grows.
+            const int ProbeId = int.MaxValue;
+
+            if (!Native.RegisterHotKey(0, ProbeId, modifiers | KeyCodes.ModNoRepeat, key))
+            {
+                var error = Marshal.GetLastWin32Error();
+                return new RegistrationResult(
+                    false, error == Native.ERROR_HOTKEY_ALREADY_REGISTERED, error);
+            }
+
+            Native.UnregisterHotKey(0, ProbeId);
+            return new RegistrationResult(true, false, 0);
+        });
+    }
+
     /// <summary>Release every chord this host holds.</summary>
     public void UnregisterAll() => Invoke(() =>
     {

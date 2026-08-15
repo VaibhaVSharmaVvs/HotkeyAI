@@ -547,7 +547,7 @@ mid-flight.
   renders and decides nothing. `show_input`, the destructive-action confirm and the `notify` toast
   ship with it, since `IPrompts` is one interface and a half-implemented one would leave the agent
   reading a console that is not there.
-- ✅ **Done, except hotkey capture.** WPF shell — automation list with enable/disable, and the
+- ✅ **Done.** WPF shell — automation list with enable/disable, and the
   TOFU approval prompt, which shows the rendered plan before the button that grants it. Opened
   from the tray by double-click or menu. Disabling is a separate, reversible flag rather than a
   revocation: making someone re-approve a plan they never changed just to switch it back on would
@@ -598,15 +598,30 @@ repaired via export → Claude Code → re-import, with the diff reviewed before
 Recorded at the `v1.0.0` tag, so none of this is discovered again by surprise. Everything here is
 missing on purpose or unfinished for a stated reason — nothing is a mystery.
 
-### Hotkey capture in the UI
+### ~~Hotkey capture in the UI~~ — done
 
-A chord can only be set by editing a plan's JSON. The dashboard shows the trigger but cannot
-change it, and there is nowhere to check whether a combination is free before committing to it.
+The chord on each dashboard row is now the button that changes it. Pressing a combination checks
+it live, and the check runs on every keypress rather than on save, so a taken chord is reported
+while the user is still holding it.
 
-This is the last unfinished item in Goal 2 and it is the most user-visible gap, because binding a
-key is the one thing the product is named after. The capture control needs the availability check
-from Phase 0 alongside it, and must be honest about what that check cannot know: a chord grabbed
-by a low-level keyboard hook reports as available and is not.
+Three things the implementation had to get right, one of which was not obvious:
+
+- **Hotkeys are released while the capture window is open.** Windows delivers a registered chord
+  to the thread that registered it, never to the focused window — so while the agent held
+  `Ctrl+Alt+X`, pressing it ran that automation instead of reaching the capture box. The window
+  was blind to precisely the combinations it exists to report on. Everything is unregistered for
+  the life of the window, panic key included, and restored on close.
+- **Our own conflicts are named.** `RegisterHotKey` can never say who holds a chord, but the store
+  can: "already used by Close Distractions" rather than "unavailable". With hotkeys suspended this
+  is the only source of truth about our own bindings, so it is load-bearing rather than a nicety.
+- **Rebinding does not revoke approval.** Approval is granted against the file's content hash, and
+  changing a trigger changes the file — correct when something changes underneath the user, wrong
+  when the user just asked for it in this window and nothing the automation *does* has moved. The
+  approval is re-granted only because this code made the edit and knows it touched nothing else.
+
+Still honest about what it cannot know: a chord grabbed by a low-level keyboard hook reports as
+available and then never fires, and the window says so in as many words. Rewriting the trigger
+also reformats the plan's JSON, since it is written back through a parser rather than patched.
 
 ### The reference automations have three defects on a real machine
 

@@ -1,3 +1,5 @@
+using HotkeyAI.Core.Dsl;
+
 namespace HotkeyAI.Ui;
 
 /// <summary>One row in the dashboard.</summary>
@@ -18,6 +20,11 @@ public sealed record DashboardEntry(
     bool IsLive,
     bool NeedsApproval,
     string Preview);
+
+/// <summary>What probing a chord found out.</summary>
+/// <param name="CanBind">Whether saving this chord would work.</param>
+/// <param name="Message">What to tell the user, whether or not it can be bound.</param>
+public sealed record HotkeyAvailability(bool CanBind, string Message);
 
 /// <summary>
 /// What the dashboard needs from the agent.
@@ -69,4 +76,34 @@ public interface IDashboardHost
     /// </summary>
     /// <returns>Null on success, or the reason it was refused.</returns>
     string? SavePlan(string json);
+
+    /// <summary>
+    /// Report whether a chord could be bound, without binding it.
+    /// </summary>
+    /// <remarks>
+    /// Called on every keypress while capturing, so the user finds out before committing rather
+    /// than after saving.
+    /// </remarks>
+    HotkeyAvailability CheckHotkey(string fileName, IReadOnlyList<KeyName> keys);
+
+    /// <summary>
+    /// Rebind an automation to a new chord.
+    /// </summary>
+    /// <returns>Null on success, or the reason it was refused.</returns>
+    string? SetHotkey(string fileName, IReadOnlyList<KeyName> keys);
+
+    /// <summary>
+    /// Release every hotkey until the returned handle is disposed.
+    /// </summary>
+    /// <remarks>
+    /// Required for capture to work at all. Windows delivers a registered chord to the thread
+    /// that registered it, never to the focused window — so while the agent holds Ctrl+Alt+X,
+    /// pressing it runs that automation instead of reaching the capture box. The window would be
+    /// blind to precisely the combinations it most needs to recognise: the ones already in use.
+    /// <para>
+    /// The panic key goes too, for the same reason: it has to be pressable to be reported as
+    /// reserved. Capture is modal and brief, and everything comes back on dispose.
+    /// </para>
+    /// </remarks>
+    IDisposable SuspendHotkeys();
 }
