@@ -30,6 +30,9 @@ public static class AgentPaths
     /// <summary>Which hotkeys last registered successfully, and when.</summary>
     public static string HotkeyHistory { get; } = Path.Combine(Root, "hotkeys.json");
 
+    /// <summary>Past versions of each plan, one folder per automation.</summary>
+    public static string Versions { get; } = Path.Combine(Root, "versions");
+
     /// <summary>Folder holding the agent's daily logs.</summary>
     public static string Logs { get; } = Path.Combine(Root, "logs");
 

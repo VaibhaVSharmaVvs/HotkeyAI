@@ -611,9 +611,33 @@ kept against the automation and pre-fills the box next time.
   Repair appears only on automations that have actually run. The last run is held in memory, so a
   run from before the agent started is in the log file but not offered here: parsing a transcript
   back out of a text log to feed a repair prompt would be building on a guess.
-- ✅ Plan diff view — old vs new side by side. The concept shows only the new plan; the diff is
-  what makes an AI-authored change reviewable.
-- ✅ Version history with `[Restore Version N]`, backed by the SQLite version table.
+- ✅ **Done.** Plan diff view. The concept shows only the new plan, and a new plan on its own is
+  not reviewable: the question worth answering is not "is this reasonable?" but "what did it
+  change?", and those differ sharply when a model has quietly dropped a step.
+
+  It appears in both places a plan can change under you — a repaired plan pasted back, and an old
+  version being restored — because those are the same review with the arguments swapped. The
+  headline is `+n −n`, which is what tells a reviewer whether the model fixed the plan or rewrote
+  it before they read a line. Added and removed lines carry a marker as well as a colour.
+
+  This also closed a hole in the repair loop: pasting a repaired plan used to be *refused* for
+  colliding with the automation it repaired, so the loop had no last step. The collision is now
+  the interesting case.
+- ✅ **Done, without SQLite.** Version history with restore, in `%LOCALAPPDATA%\HotkeyAI\versions`.
+
+  The plan called for a SQLite version table. What actually has to be stored is a few dozen copies
+  of a few kilobytes of JSON, keyed by name and ordered by time — which is what a directory is.
+  SQLite would add a native dependency and a schema to migrate in exchange for querying nobody
+  needs, and the data would stop being readable with the tools the rest of this project is already
+  inspectable with. The version *is* the file, so restoring is a copy and inspecting is opening it.
+
+  Snapshots are taken on load rather than on save, so a plan edited in a text editor is versioned
+  exactly like one changed through the dashboard, and identical content is never recorded twice —
+  otherwise every rebind would add a copy of whatever the plan currently says. Twenty are kept.
+
+  Restoring revokes approval, deliberately. Restoring changes what is about to become live, and
+  the gate exists so that a person reads what is about to become live — including when it is
+  something they wrote last week.
 - ✅ **Done.** Regression suite — 57 golden plans in `tests/corpus`, held to four things: they
   validate, they round-trip through JSON, they render exactly as before, and they execute against
   `FakeDesktop`. Coverage is gated, not hoped for: every action type, postcondition, predicate and

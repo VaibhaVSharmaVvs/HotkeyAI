@@ -29,6 +29,7 @@ validated plan, the engine runs and verifies it, and the agent sits in the tray.
 | ✅ | `HotkeyAI.Ui` — picker, input, confirm and toast overlays |
 | ✅ | `HotkeyAI.Ui` — tray icon and menu, and the dashboard |
 | ✅ | User verdicts — mark an automation as working or not, bound to its content |
+| ✅ | Version history and a diff view — every change reviewable, and reversible |
 | ✅ | `HotkeyAI.Agent` — tray host, panic key, single-instance guard, daily log |
 | ✅ | `HotkeyAI.Agent` — autostart at login, and hotkey registration history |
 | ✅ | `HotkeyAI.Cli` — `validate`, `explain`, `schema`, `apps`, `run`, `list`, `approve`, `autostart` |

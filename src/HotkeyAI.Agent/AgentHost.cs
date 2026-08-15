@@ -118,8 +118,10 @@ public static class AgentHost
         // is how the CLI ended up blind to two of the four storages.
         var policy = AgentStore.Policy;
         var store = AgentStore.Open();
+        var versions = AgentStore.Versions();
         var history = new RegistrationHistory(AgentPaths.HotkeyHistory);
         var loaded = store.Load(AgentPaths.Automations);
+        Capture(versions, loaded);
 
         AgentLog.Line($"Hotkey AI — automations in {AgentPaths.Automations}");
         AgentLog.Line();
@@ -205,7 +207,7 @@ public static class AgentHost
 
         void Rebind()
         {
-            Reload(store, host, runnable, history);
+            Reload(store, host, runnable, history, versions);
             fingerprint = Fingerprint(store);
         }
 
@@ -216,7 +218,8 @@ public static class AgentHost
             return new Restore(Rebind);
         }
 
-        var dashboard = new DashboardHost(store, policy, Rebind, host.Probe, Suspend, PanicChord, lastRuns);
+        var dashboard = new DashboardHost(
+            store, policy, Rebind, host.Probe, Suspend, PanicChord, lastRuns, versions);
 
         using var tray = await TrayIcon.ShowAsync(
             Tooltip(loaded.Count, live),
@@ -325,7 +328,8 @@ public static class AgentHost
         AutomationStore store,
         HotkeyHost host,
         Dictionary<string, Automation> runnable,
-        RegistrationHistory history)
+        RegistrationHistory history,
+        IVersionStore versions)
     {
         AgentLog.Line();
         AgentLog.Line("Reloading automations.");
@@ -338,6 +342,8 @@ public static class AgentHost
         }
 
         var loaded = store.Load(AgentPaths.Automations);
+        Capture(versions, loaded);
+
         var registrations = Register(host, loaded, runnable, history);
 
         Report(loaded, registrations, history);
@@ -354,6 +360,29 @@ public static class AgentHost
         AgentLog.Line(error is null
             ? currentlyEnabled ? "Autostart removed." : "Autostart installed."
             : $"Autostart change failed: {error}");
+    }
+
+    /// <summary>
+    /// Snapshot every plan that has changed since its last snapshot.
+    /// </summary>
+    /// <remarks>
+    /// Done on load rather than on save, so a plan edited in a text editor is versioned exactly
+    /// like one changed through the dashboard. The store itself skips content it already holds,
+    /// so calling this on every reload is cheap and produces no duplicates.
+    /// </remarks>
+    private static void Capture(IVersionStore versions, IReadOnlyList<StoredAutomation> loaded)
+    {
+        foreach (var automation in loaded)
+        {
+            try
+            {
+                versions.Capture(automation.FileName, File.ReadAllText(automation.Path));
+            }
+            catch (IOException)
+            {
+                // A file that cannot be read right now will be captured on the next reload.
+            }
+        }
     }
 
     /// <summary>

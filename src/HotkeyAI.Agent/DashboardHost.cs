@@ -30,8 +30,139 @@ internal sealed class DashboardHost(
     Func<IReadOnlyList<KeyName>, RegistrationResult> probe,
     Func<IDisposable> suspendHotkeys,
     IReadOnlyList<KeyName> panicChord,
-    IReadOnlyDictionary<string, RunRecord> lastRuns) : IDashboardHost
+    IReadOnlyDictionary<string, RunRecord> lastRuns,
+    IVersionStore versions) : IDashboardHost
 {
+    public IReadOnlyList<PlanVersionInfo> History(string fileName)
+    {
+        var current = ReadCurrent(fileName);
+        var currentHash = current is null ? null : AutomationStore.HashOf(current);
+
+        var history = new List<PlanVersionInfo>();
+        var markedCurrent = false;
+
+        foreach (var v in versions.History(fileName))
+        {
+            // Only the newest match is labelled as current. Reverting a plan leaves two snapshots
+            // holding identical content, and marking both would offer two answers to "which one
+            // is on disk" while making neither restorable.
+            var isCurrent = !markedCurrent
+                && currentHash is not null
+                && string.Equals(v.ContentHash, currentHash, StringComparison.OrdinalIgnoreCase);
+
+            markedCurrent |= isCurrent;
+
+            history.Add(new PlanVersionInfo(
+                v.Id,
+                v.When,
+                $"{v.When.ToString("d MMM HH:mm", CultureInfo.InvariantCulture)}  ·  {v.Lines} lines",
+                isCurrent));
+        }
+
+        return history;
+    }
+
+    public string? ReadVersion(string fileName, string versionId) =>
+        versions.Read(fileName, versionId);
+
+    public string? ReadCurrent(string fileName)
+    {
+        var automation = Find(fileName);
+
+        if (automation is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return File.ReadAllText(automation.Path);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Put a past version back on disk.
+    /// </summary>
+    /// <remarks>
+    /// Validated before it is written, exactly as a pasted plan is. A version was valid when it
+    /// was captured, but the schema may have moved since, and restoring something the current
+    /// validator rejects would leave an automation that cannot run and no obvious way back.
+    /// <para>
+    /// Approval is deliberately not carried over. Restoring changes what is on disk, and the
+    /// point of the gate is that a person reads what is about to become live — including when
+    /// what is about to become live is something they wrote last week.
+    /// </para>
+    /// </remarks>
+    public string? RestoreVersion(string fileName, string versionId)
+    {
+        var content = versions.Read(fileName, versionId);
+
+        return content is null
+            ? "That version is no longer stored."
+            : Write(fileName, content, "Restored");
+    }
+
+    public string? ReplacePlan(string fileName, string json) => Write(fileName, json, "Replaced");
+
+    public string? ExistingFileFor(string json)
+    {
+        if (ValidatePlan(json).Count > 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var plan = JsonSerializer.Deserialize<Automation>(json, DslJson.Options);
+            var fileName = $"{Slug(plan?.Name)}.json";
+
+            return Find(fileName) is null ? null : fileName;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private string? Write(string fileName, string json, string verb)
+    {
+        var problems = ValidatePlan(json);
+
+        if (problems.Count > 0)
+        {
+            return string.Join(Environment.NewLine, problems.Take(5));
+        }
+
+        var automation = Find(fileName);
+
+        if (automation is null)
+        {
+            return $"{fileName} is no longer in the automations folder.";
+        }
+
+        try
+        {
+            File.WriteAllText(automation.Path, json.Trim() + Environment.NewLine);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Could not write {fileName}: {ex.Message}";
+        }
+
+        AgentLog.Line($"{verb} {fileName}. It needs approving again before it can run.");
+        rebind();
+        return null;
+    }
+
+    private StoredAutomation? Find(string fileName) =>
+        store.Load(AgentPaths.Automations)
+            .FirstOrDefault(a =>
+                string.Equals(a.FileName, fileName, StringComparison.OrdinalIgnoreCase));
+
     public RunRecord? LastRun(string fileName) => lastRuns.GetValueOrDefault(fileName);
 
     /// <summary>
