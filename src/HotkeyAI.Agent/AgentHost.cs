@@ -196,7 +196,16 @@ public static class AgentHost
 
         var live = registrations.Values.Count(r => r.Registered);
 
-        void Rebind() => Reload(store, host, runnable, history);
+        // What the folder looked like at the last rebind. Compared on every watcher event so the
+        // agent does not react to its own writes: rebinding a hotkey and saving a pasted plan both
+        // rewrite files here, and each would otherwise bounce straight back as an external change.
+        var fingerprint = Fingerprint(store);
+
+        void Rebind()
+        {
+            Reload(store, host, runnable, history);
+            fingerprint = Fingerprint(store);
+        }
 
         // Releases every chord, and puts them all back when the caller is done with it.
         IDisposable Suspend()
@@ -213,7 +222,37 @@ public static class AgentHost
             () => DashboardWindow.Open(dashboard),
             AgentLog.Line).ConfigureAwait(false);
 
+        using var watcher = new AutomationWatcher(AgentPaths.Automations, () =>
+        {
+            var current = Fingerprint(store);
+
+            if (string.Equals(current, fingerprint, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            AgentLog.Line();
+            AgentLog.Line("The automations folder changed.");
+            Rebind();
+
+            // Said out loud, because the whole point is to shorten the gap between saving a plan
+            // and being asked about it. Anything new stays inert until it is approved, so this
+            // notification is the only thing standing between a dropped file and being forgotten.
+            var waiting = store.Load(AgentPaths.Automations)
+                .Count(a => a.Status != ApprovalStatus.Approved && a.Validation.IsValid);
+
+            if (waiting > 0)
+            {
+                tray.Notify(
+                    "Hotkey AI",
+                    waiting == 1
+                        ? "An automation is waiting for you to review it."
+                        : $"{waiting} automations are waiting for you to review them.");
+            }
+        });
+
         AgentLog.Line();
+        AgentLog.Line($"Watching {AgentPaths.Automations} for changes.");
         AgentLog.Line($"Running in the tray. Log: {AgentLog.Path}");
 
         // The one moment this process is allowed to interrupt: it has just started, has no window,
@@ -314,6 +353,19 @@ public static class AgentHost
             ? currentlyEnabled ? "Autostart removed." : "Autostart installed."
             : $"Autostart change failed: {error}");
     }
+
+    /// <summary>
+    /// A cheap description of the folder's contents, for spotting real changes.
+    /// </summary>
+    /// <remarks>
+    /// Names and content hashes rather than timestamps. A file rewritten with identical content —
+    /// which is what saving in an editor without changing anything produces — is not a change
+    /// worth unregistering every hotkey for.
+    /// </remarks>
+    private static string Fingerprint(AutomationStore store) =>
+        string.Join(
+            "|",
+            store.Load(AgentPaths.Automations).Select(a => $"{a.FileName}:{a.ContentHash}"));
 
     private static string Tooltip(int total, int live) =>
         live == total

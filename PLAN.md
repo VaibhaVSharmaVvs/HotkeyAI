@@ -518,8 +518,8 @@ The bulk of V1. With no planner, this *is* the product.
   only ever one implementation and nothing to keep byte-identical.
 - ✅ `HotkeyAI.Agent` — tray host, hotkey pump, executor with the full V1 primitive set,
   observer/postcondition checker, structured execution log.
-- ⬜ `AuthoringBridge` — the TOFU gate from control 4 is done; the `FileSystemWatcher` is not.
-  Reload is explicit, from the tray or the dashboard. See Known gaps.
+- ✅ `AuthoringBridge` — `FileSystemWatcher` on the automations folder, validate-on-change, and
+  the TOFU gate from control 4. The watcher surfaces an approval; it can never skip one.
 - ✅ `HotkeyAI.Cli` — the five verbs. Build `validate` and `explain` first; they're what make
   external authoring work.
 - ✅ Safety controls 1–7, wired in from the start rather than retrofitted.
@@ -654,12 +654,31 @@ means arranging existing windows. It is still startling when it grabs a browser 
 Deciding between "arrange everything" and "arrange only what I launched" is a product question,
 and the second option makes the automation useless on its second run of the day.
 
-### No folder watcher
+### ~~No folder watcher~~ — done
 
-Dropping a plan into the automations folder does not pick it up. Reload is explicit, from the tray
-menu or the dashboard. The watcher was scoped in Goal 1 and is genuinely useful for authoring, but
-it interacts with the trust-on-first-use gate: a file appearing must never become live without a
-person reading it, so the watcher can only ever surface an approval prompt, never skip one.
+Dropping a plan into the automations folder is now noticed within a second, and the agent
+reloads and rebinds itself.
+
+The constraint it was scoped under is intact and worth restating, because it is the whole reason
+this feature is safe: **the watcher cannot make anything run.** A file arriving is classified like
+any other, so new or edited content is inert until a person has read the rendered plan and
+approved it. What the watcher shortens is the distance between saving a file and being *asked*.
+Verified by dropping one in: it appeared immediately as "new — review the plan and approve it
+before it can run", and stayed there.
+
+Two details that make it usable rather than irritating:
+
+- **A settling period.** One save is several filesystem events, and a plan arriving over a sync
+  client lands in pieces, so every event restarts a 750 ms timer and only the settled state is
+  read. Reacting to the first event means parsing a half-written file and reporting it as invalid.
+- **Content, not timestamps.** The folder is fingerprinted by file name and content hash, so
+  saving a file without changing it is ignored, and the agent does not react to its own writes —
+  rebinding a hotkey and saving a pasted plan both rewrite files here and would otherwise bounce
+  straight back as external changes.
+
+Editing an automation that was already approved drops it out of live immediately, which is
+approval being bound to content rather than to a file name. Restoring the original bytes brings
+the approval back on its own.
 
 ### `hotkeyai import` and `hotkeyai logs` are stubs
 
