@@ -25,6 +25,9 @@ internal sealed class HotkeyCaptureWindow : Window
 
     private IReadOnlyList<KeyName>? captured;
 
+    /// <summary>Set once this window starts closing, so Deactivated stops acting.</summary>
+    private bool closing;
+
     private HotkeyCaptureWindow(IDashboardHost host, string fileName, string name, string current)
     {
         this.host = host;
@@ -105,7 +108,19 @@ internal sealed class HotkeyCaptureWindow : Window
         // being closed — pressing a shell-reserved combination such as Ctrl+Shift+Esc hands
         // focus elsewhere mid-capture. Left open it would sit there looking ready and quietly
         // recording nothing, so it closes instead of lying about being able to listen.
-        Deactivated += (_, _) => Close();
+        //
+        // Guarded, because closing is itself deactivating: WPF refuses Close() on a window that
+        // is already closing, and the resulting InvalidOperationException took the agent down
+        // once before the dispatcher started catching them. Saving a chord deactivates this
+        // window on the way out, so the unguarded version threw every single time.
+        Closing += (_, _) => closing = true;
+        Deactivated += (_, _) =>
+        {
+            if (!closing)
+            {
+                Close();
+            }
+        };
         SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
             new System.Windows.Interop.WindowInteropHelper(this).Handle);
     }

@@ -33,6 +33,9 @@ public static class AgentStore
         AllowedRoots = [Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)],
     };
 
+    /// <summary>Open the version history over the agent's files.</summary>
+    public static IVersionStore Versions() => new FileVersionStore(AgentPaths.Versions);
+
     /// <summary>Open the store over the agent's files.</summary>
     public static AutomationStore Open() => new(
         new DpapiApprovalStorage(AgentPaths.Approvals),

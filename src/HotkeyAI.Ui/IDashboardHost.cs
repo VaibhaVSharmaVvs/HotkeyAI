@@ -47,6 +47,13 @@ public enum HealthState
     NotWorking,
 }
 
+/// <summary>One past version of a plan, for the history list.</summary>
+/// <param name="Id">Opaque identifier, passed back to read or restore it.</param>
+/// <param name="When">When this content was first seen.</param>
+/// <param name="Summary">A short description for the list, such as when and how big.</param>
+/// <param name="IsCurrent">True if this is what is on disk right now.</param>
+public sealed record PlanVersionInfo(string Id, DateTimeOffset When, string Summary, bool IsCurrent);
+
 /// <summary>What happened the last time an automation ran.</summary>
 /// <param name="When">When it ran.</param>
 /// <param name="Succeeded">Whether it finished without failing.</param>
@@ -125,6 +132,36 @@ public interface IDashboardHost
     /// </summary>
     /// <returns>Null on success, or the reason it was refused.</returns>
     string? SetHotkey(string fileName, IReadOnlyList<KeyName> keys);
+
+    /// <summary>Past versions of a plan, newest first.</summary>
+    IReadOnlyList<PlanVersionInfo> History(string fileName);
+
+    /// <summary>The content of one past version, or null if it has been pruned.</summary>
+    string? ReadVersion(string fileName, string versionId);
+
+    /// <summary>The plan exactly as it is on disk right now.</summary>
+    string? ReadCurrent(string fileName);
+
+    /// <summary>
+    /// Put a past version back.
+    /// </summary>
+    /// <returns>Null on success, or the reason it was refused.</returns>
+    string? RestoreVersion(string fileName, string versionId);
+
+    /// <summary>
+    /// The automation a pasted plan would collide with, or null if it would be new.
+    /// </summary>
+    /// <remarks>
+    /// Asked before saving, so a repaired plan coming back from a model is offered as a reviewable
+    /// replacement rather than refused for having the same name as the thing it repairs.
+    /// </remarks>
+    string? ExistingFileFor(string json);
+
+    /// <summary>
+    /// Replace an existing automation with pasted JSON.
+    /// </summary>
+    /// <returns>Null on success, or the reason it was refused.</returns>
+    string? ReplacePlan(string fileName, string json);
 
     /// <summary>
     /// Record whether the user says this automation works.

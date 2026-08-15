@@ -338,6 +338,8 @@ public sealed class DashboardWindow : Window
             actions.Children.Add(Button("Repair", () => Repair(entry)));
         }
 
+        actions.Children.Add(Button("History", () => History(entry)));
+
         var toggle = new CheckBox
         {
             IsChecked = entry.IsEnabled,
@@ -495,6 +497,113 @@ public sealed class DashboardWindow : Window
         };
 
         return button;
+    }
+
+    /// <summary>
+    /// Past versions of a plan, with a diff against what is on disk now.
+    /// </summary>
+    /// <remarks>
+    /// Restoring is the undo for an AI-authored change, which is the only reason it is safe to
+    /// accept one. The diff is shown first because a version list on its own tells you when
+    /// something changed and never what.
+    /// </remarks>
+    private void History(DashboardEntry entry)
+    {
+        var history = host.History(entry.FileName);
+
+        if (history.Count == 0)
+        {
+            Say($"No history for {entry.Name} yet — versions are kept from the first time the "
+                + "agent sees a change.");
+            return;
+        }
+
+        var window = new Window
+        {
+            Title = $"History of {entry.Name}",
+            Width = 520,
+            Height = 460,
+            Background = Palette.Surface,
+            Foreground = Palette.Text,
+            FontFamily = new FontFamily("Segoe UI"),
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+
+        var list = new StackPanel();
+
+        foreach (var version in history)
+        {
+            var row = new Button
+            {
+                Content = version.IsCurrent ? $"{version.Summary}   ·   on disk now" : version.Summary,
+                Foreground = version.IsCurrent ? Palette.Muted : Palette.Text,
+                Background = Palette.Selection,
+                BorderBrush = Palette.Edge,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(12, 8, 12, 8),
+                Margin = new Thickness(0, 0, 0, 6),
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                FontSize = 12,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                IsEnabled = !version.IsCurrent,
+            };
+
+            var id = version.Id;
+
+            row.Click += (_, _) =>
+            {
+                var older = host.ReadVersion(entry.FileName, id);
+                var current = host.ReadCurrent(entry.FileName);
+
+                if (older is null || current is null)
+                {
+                    Say("That version is no longer stored.");
+                    return;
+                }
+
+                // Old on the left, current on the right: the diff reads as "what restoring would
+                // undo", which is the question being asked.
+                if (DiffWindow.Show(
+                        window,
+                        $"Restore {entry.Name}",
+                        current,
+                        older,
+                        "Restore this version",
+                        () => host.RestoreVersion(entry.FileName, id)))
+                {
+                    window.Close();
+                    Refresh();
+                    Say($"{entry.Name} restored. It needs approving again before it can run.");
+                }
+            };
+
+            list.Children.Add(row);
+        }
+
+        var layout = new Grid { Margin = new Thickness(18) };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var caption = Label("Pick a version to see what restoring it would change.");
+        Grid.SetRow(caption, 0);
+        layout.Children.Add(caption);
+
+        var scroller = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = list,
+            Margin = new Thickness(0, 8, 0, 0),
+        };
+
+        Grid.SetRow(scroller, 1);
+        layout.Children.Add(scroller);
+
+        window.SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
+            new System.Windows.Interop.WindowInteropHelper(window).Handle);
+
+        window.Content = layout;
+        window.ShowDialog();
     }
 
     /// <summary>
@@ -677,6 +786,33 @@ public sealed class DashboardWindow : Window
 
     private void SavePasted()
     {
+        // A repaired plan comes back with the same name as the thing it repairs. Refusing it — as
+        // this did — left the repair loop with no last step: you had the fix and nowhere to put
+        // it. Now the collision is the interesting case, and the diff is what makes accepting it
+        // a review rather than a leap.
+        if (host.ExistingFileFor(pasted.Text) is { } existing)
+        {
+            var current = host.ReadCurrent(existing);
+
+            if (current is not null
+                && DiffWindow.Show(
+                    this,
+                    $"Replace {existing}",
+                    current,
+                    pasted.Text,
+                    "Replace it",
+                    () => host.ReplacePlan(existing, pasted.Text)))
+            {
+                pasted.Clear();
+                description.Clear();
+                hotkey.Clear();
+                Refresh();
+                Say($"{existing} replaced. It needs approving again before it can run.");
+            }
+
+            return;
+        }
+
         var error = host.SavePlan(pasted.Text);
 
         if (error is not null)
