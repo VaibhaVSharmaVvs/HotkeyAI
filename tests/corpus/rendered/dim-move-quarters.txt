@@ -1,0 +1,18 @@
+Move: quarters and centred
+
+Trigger    Ctrl + Alt + Shift + N
+
+Steps
+  1. [s1] Move the window with process "a" to top left quarter
+      (unverified)
+  2. [s2] Move the window with process "a" to top right quarter
+      (unverified)
+  3. [s3] Move the window with process "a" to bottom left quarter
+      (unverified)
+  4. [s4] Move the window with process "a" to bottom right quarter
+      (unverified)
+  5. [s5] Move the window with process "a" to centered
+      (unverified)
+
+0 of 5 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

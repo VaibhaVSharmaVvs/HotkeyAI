@@ -1,0 +1,13 @@
+Search the Clipboard
+
+Trigger    Ctrl + Alt + N
+Variables  query: text
+
+Steps
+  1. [s1] Read the clipboard into ${query}
+      (unverified)
+  2. [s2] Launch chrome with https://example.invalid/?q=${query}
+      (unverified)
+
+0 of 2 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

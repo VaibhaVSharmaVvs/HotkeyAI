@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "name": "Predicate: process running",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "V"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "if",
+      "condition": {
+        "type": "process_running",
+        "processName": "Code"
+      },
+      "then": [
+        {
+          "id": "s1a",
+          "type": "notify",
+          "message": "running"
+        }
+      ]
+    }
+  ]
+}

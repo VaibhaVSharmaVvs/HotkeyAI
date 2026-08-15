@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "name": "Nesting: foreach inside foreach",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "G"
+    ]
+  },
+  "variables": [
+    {
+      "name": "outer",
+      "type": "pathList"
+    },
+    {
+      "name": "o",
+      "type": "path"
+    },
+    {
+      "name": "i",
+      "type": "path"
+    },
+    {
+      "name": "hit",
+      "type": "boolean"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "list_directories",
+      "path": "C:\\Corpus\\repos",
+      "into": "outer"
+    },
+    {
+      "id": "s2",
+      "type": "foreach",
+      "source": "outer",
+      "itemVariable": "o",
+      "maxIterations": 3,
+      "body": [
+        {
+          "id": "s2a",
+          "type": "foreach",
+          "source": "outer",
+          "itemVariable": "i",
+          "maxIterations": 3,
+          "body": [
+            {
+              "id": "s2a1",
+              "type": "path_exists",
+              "path": "${i.fullPath}",
+              "into": "hit"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

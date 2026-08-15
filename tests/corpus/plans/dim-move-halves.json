@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "name": "Move: halves and maximized",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "M"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "left_half"
+    },
+    {
+      "id": "s2",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "right_half"
+    },
+    {
+      "id": "s3",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "top_half"
+    },
+    {
+      "id": "s4",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "bottom_half"
+    },
+    {
+      "id": "s5",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "maximized"
+    }
+  ]
+}

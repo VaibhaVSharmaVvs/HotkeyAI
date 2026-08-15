@@ -1,0 +1,16 @@
+Tidy Desktop
+
+Trigger    Ctrl + Alt + J
+Variables  junk: pathList, one: path, there: boolean
+
+Steps
+  1. [s1] List files matching *.tmp in C:\Corpus\Desktop (depth 1) into ${junk}
+      (unverified)
+  2. [s2] For each item in ${junk} as ${one} (at most 20)
+      2.1. [s2a] Check whether ${one.fullPath} exists, into ${there}
+          (unverified)
+  3. [s3] Show a info toast: "Checked the desktop."
+      (unverified)
+
+0 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

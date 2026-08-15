@@ -1,0 +1,9 @@
+Expect: foreground process
+
+Trigger    Ctrl + Alt + U
+
+Steps
+  1. [s1] Focus the window with process "Notepad"
+      (verified) "Notepad" owns the foreground window within 5000 ms
+
+1 of 1 actions carry a postcondition the engine can check.

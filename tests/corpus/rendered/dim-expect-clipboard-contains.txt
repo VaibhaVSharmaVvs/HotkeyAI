@@ -1,0 +1,9 @@
+Expect: clipboard contains
+
+Trigger    Ctrl + Alt + S
+
+Steps
+  1. [s1] Copy "hello corpus" to the clipboard
+      (verified) the clipboard contains "corpus" within 3000 ms
+
+1 of 1 actions carry a postcondition the engine can check.

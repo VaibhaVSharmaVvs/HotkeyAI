@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "name": "Predicate: window exists",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "X"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "if",
+      "condition": {
+        "type": "window_exists",
+        "selector": {
+          "processName": "chrome"
+        }
+      },
+      "then": [
+        {
+          "id": "s1a",
+          "type": "notify",
+          "message": "a window"
+        }
+      ]
+    }
+  ]
+}

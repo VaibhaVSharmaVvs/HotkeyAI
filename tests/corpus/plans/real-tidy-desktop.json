@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "name": "Tidy Desktop",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "J"
+    ]
+  },
+  "variables": [
+    {
+      "name": "junk",
+      "type": "pathList"
+    },
+    {
+      "name": "one",
+      "type": "path"
+    },
+    {
+      "name": "there",
+      "type": "boolean"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "list_files",
+      "path": "C:\\Corpus\\Desktop",
+      "pattern": "*.tmp",
+      "depth": 1,
+      "into": "junk"
+    },
+    {
+      "id": "s2",
+      "type": "foreach",
+      "source": "junk",
+      "itemVariable": "one",
+      "maxIterations": 20,
+      "body": [
+        {
+          "id": "s2a",
+          "type": "path_exists",
+          "path": "${one.fullPath}",
+          "into": "there"
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "notify",
+      "message": "Checked the desktop.",
+      "level": "info"
+    }
+  ]
+}

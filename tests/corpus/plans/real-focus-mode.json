@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "name": "Focus Mode",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "C"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "close_window",
+      "selector": {
+        "processName": "slack"
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "s2",
+      "type": "minimize_window",
+      "selector": {
+        "processName": "chrome"
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "s3",
+      "type": "maximize_window",
+      "selector": {
+        "processName": "Code"
+      }
+    },
+    {
+      "id": "s4",
+      "type": "notify",
+      "message": "Focus mode on.",
+      "level": "info"
+    }
+  ]
+}

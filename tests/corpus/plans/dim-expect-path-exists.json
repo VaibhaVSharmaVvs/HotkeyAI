@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "Expect: path exists",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "R"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "open_path",
+      "path": "C:\\Corpus\\notes",
+      "expect": {
+        "type": "path_exists",
+        "path": "C:\\Corpus\\notes",
+        "withinMs": 5000
+      }
+    }
+  ]
+}

@@ -2,6 +2,8 @@ using System.Text.Json;
 using HotkeyAI.Core.Dsl;
 using HotkeyAI.Core.Json;
 
+using HotkeyAI.Tests;
+
 namespace HotkeyAI.Core.Tests;
 
 /// <summary>

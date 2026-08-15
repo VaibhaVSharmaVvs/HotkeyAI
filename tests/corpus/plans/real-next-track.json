@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "Next Track",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "I"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "send_appcommand",
+      "command": "media_next_track"
+    }
+  ]
+}

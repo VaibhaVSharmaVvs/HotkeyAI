@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "name": "Move: quarters and centred",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "N"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "top_left_quarter"
+    },
+    {
+      "id": "s2",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "top_right_quarter"
+    },
+    {
+      "id": "s3",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "bottom_left_quarter"
+    },
+    {
+      "id": "s4",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "bottom_right_quarter"
+    },
+    {
+      "id": "s5",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "centered"
+    }
+  ]
+}

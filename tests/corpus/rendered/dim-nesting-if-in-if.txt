@@ -1,0 +1,14 @@
+Nesting: if inside if
+
+Trigger    Ctrl + Alt + Shift + D
+
+Steps
+  1. [s1] If process "Code" is running
+      then:
+      1.1. [s1a] If C:\Corpus\src does exist
+          then:
+          1.1.1. [s1a1] Show a info toast: "deepest level"
+              (unverified)
+
+0 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

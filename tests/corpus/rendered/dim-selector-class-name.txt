@@ -1,0 +1,10 @@
+Selector: class name
+
+Trigger    Ctrl + Alt + Shift + K
+
+Steps
+  1. [s1] Focus the window with class "CabinetWClass"
+      (unverified)
+
+0 of 1 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

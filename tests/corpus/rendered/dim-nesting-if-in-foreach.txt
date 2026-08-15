@@ -1,0 +1,16 @@
+Nesting: if inside foreach
+
+Trigger    Ctrl + Alt + Shift + F
+Variables  files: pathList, f: path
+
+Steps
+  1. [s1] List files matching *.json in C:\Corpus\src (depth 2) into ${files}
+      (unverified)
+  2. [s2] For each item in ${files} as ${f} (at most 10)
+      2.1. [s2a] If ${f.fullPath} does exist
+          then:
+          2.1.1. [s2a1] Show a info toast: "found ${f.name}"
+              (unverified)
+
+0 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

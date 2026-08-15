@@ -1,0 +1,15 @@
+Nesting: foreach inside foreach
+
+Trigger    Ctrl + Alt + Shift + G
+Variables  outer: pathList, o: path, i: path, hit: boolean
+
+Steps
+  1. [s1] List folders in C:\Corpus\repos (depth 1) into ${outer}
+      (unverified)
+  2. [s2] For each item in ${outer} as ${o} (at most 3)
+      2.1. [s2a] For each item in ${outer} as ${i} (at most 3)
+          2.1.1. [s2a1] Check whether ${i.fullPath} exists, into ${hit}
+              (unverified)
+
+0 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

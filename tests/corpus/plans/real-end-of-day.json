@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "name": "End of Day",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "O"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "close_window",
+      "selector": {
+        "processName": "Code"
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "s2",
+      "type": "close_window",
+      "selector": {
+        "processName": "chrome"
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "s3",
+      "type": "set_clipboard",
+      "text": "done for today"
+    },
+    {
+      "id": "s4",
+      "type": "notify",
+      "message": "Shutting down.",
+      "level": "info"
+    }
+  ]
+}

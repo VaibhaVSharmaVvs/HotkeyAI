@@ -22,4 +22,11 @@
     <ProjectReference Include="..\..\src\HotkeyAI.Engine\HotkeyAI.Engine.csproj" />
   </ItemGroup>
 
+
+  <ItemGroup>
+    <!-- Shared with the other test project rather than copied: two answers to "where is the repo
+         root" is the sort of duplication that survives until an output path changes. -->
+    <Compile Include="..\Shared\RepoPaths.cs" Link="RepoPaths.cs" />
+  </ItemGroup>
+
 </Project>

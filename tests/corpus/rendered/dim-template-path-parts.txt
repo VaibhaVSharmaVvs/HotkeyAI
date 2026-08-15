@@ -1,0 +1,15 @@
+Template: path properties
+
+Trigger    Ctrl + Alt + Shift + H
+Variables  files: pathList, one: path
+
+Steps
+  1. [s1] List files matching *.cs in C:\Corpus\src (depth 1) into ${files}
+      (unverified)
+  2. [s2] Ask the user to pick from ${files} into ${one} — "Which file?"
+      (unverified)
+  3. [s3] Show a info toast: "${one.name} in ${one.parent} (${one.extension}) at ${one.fullPath}"
+      (unverified)
+
+0 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

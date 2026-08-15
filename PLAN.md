@@ -574,10 +574,19 @@ showing the correct rendered plan, and can be enabled, run, and disabled from th
 - ✅ Plan diff view — old vs new side by side. The concept shows only the new plan; the diff is
   what makes an AI-authored change reviewable.
 - ✅ Version history with `[Restore Version N]`, backed by the SQLite version table.
-- ✅ **Regression suite** — a corpus of 40–60 golden plans that must stay schema-valid across
-  DSL changes and still execute in a VM snapshot. In V1 this guards against your own
-  refactors; in V2 the same corpus becomes the planner's eval set with expected-output pairs
-  added. Build it now so V2 has a baseline on day one.
+- ✅ **Done.** Regression suite — 57 golden plans in `tests/corpus`, held to four things: they
+  validate, they round-trip through JSON, they render exactly as before, and they execute against
+  `FakeDesktop`. Coverage is gated, not hoped for: every action type, postcondition, predicate and
+  composite condition must appear, and the plan count must stay between 40 and 60.
+
+  It earned its keep before it was finished. The first full run failed on `real-daily-standup`,
+  because the app registry exists in two places — `AppRegistry` in Core, which the validator reads,
+  and `AppResolver` in Windows, which resolves executables — and the previous change had added
+  Teams, Discord and Cursor to the second only. Every plan naming `"app": "teams"` would have been
+  refused by validation while resolving perfectly at run time. Fixed in the same change.
+
+  The "execute in a VM snapshot" half is still outstanding: execution here is against the fake
+  desktop, which proves dispatch and control flow but not that anything happens on a real screen.
 
 **Exit criterion:** the suite runs from one command; a deliberately broken automation is
 repaired via export → Claude Code → re-import, with the diff reviewed before enabling.

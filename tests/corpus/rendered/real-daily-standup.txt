@@ -1,0 +1,16 @@
+Daily Standup
+
+Trigger    Ctrl + Alt + B
+
+Steps
+  1. [s1] If process "ms-teams" is not running
+      then:
+      1.1. [s1a] Launch teams
+          (verified) the window with process "ms-teams" exists within 30000 ms
+  2. [s2] Move the window with process "ms-teams" to right half
+      (unverified)
+  3. [s3] Show a info toast: "Standup in five minutes."
+      (unverified)
+
+1 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

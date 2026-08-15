@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "name": "App commands: volume",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "Q"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "send_appcommand",
+      "command": "volume_up"
+    },
+    {
+      "id": "s2",
+      "type": "send_appcommand",
+      "command": "volume_down"
+    },
+    {
+      "id": "s3",
+      "type": "send_appcommand",
+      "command": "volume_mute"
+    }
+  ]
+}

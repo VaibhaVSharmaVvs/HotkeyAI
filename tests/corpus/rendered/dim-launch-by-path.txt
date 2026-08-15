@@ -1,0 +1,10 @@
+Launch: by path with argv
+
+Trigger    Ctrl + Alt + Shift + V
+
+Steps
+  1. [s1] Launch C:\Corpus\tools\thing.exe with --flag value with spaces
+      (unverified)
+
+0 of 1 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

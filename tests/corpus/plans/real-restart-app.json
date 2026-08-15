@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "name": "Restart the Editor",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "K"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "terminate_process",
+      "processName": "Code",
+      "force": false,
+      "onError": "continue"
+    },
+    {
+      "id": "s2",
+      "type": "wait",
+      "durationMs": 2000
+    },
+    {
+      "id": "s3",
+      "type": "launch_process",
+      "app": "vscode",
+      "expect": {
+        "type": "process_running",
+        "processName": "Code",
+        "withinMs": 20000
+      }
+    }
+  ]
+}

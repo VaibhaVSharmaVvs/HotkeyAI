@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "name": "Abort: with a reason",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "Z"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "if",
+      "condition": {
+        "type": "process_running",
+        "processName": "never-running"
+      },
+      "then": [
+        {
+          "id": "s1a",
+          "type": "notify",
+          "message": "unreachable"
+        }
+      ],
+      "else": [
+        {
+          "id": "s1b",
+          "type": "abort",
+          "reason": "The prerequisite is not running."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "name": "Launch: by path with argv",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "V"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "launch_process",
+      "path": "C:\\Corpus\\tools\\thing.exe",
+      "argv": [
+        "--flag",
+        "value with spaces"
+      ],
+      "workingDirectory": "C:\\Corpus\\tools"
+    }
+  ]
+}

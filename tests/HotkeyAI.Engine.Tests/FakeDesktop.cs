@@ -80,6 +80,28 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
     {
         await RecordAsync($"launch:{executablePath}:{string.Join('|', argv)}").ConfigureAwait(false);
         RunningProcesses.Add(executablePath);
+
+        // Also under the name the process would actually have. Real plans launch an app and then
+        // wait on `process_running` for it, and a fake that only remembers the full path can never
+        // satisfy that — the postcondition polls for its whole timeout and the test pays for it in
+        // wall-clock. Recording both keeps path-based assertions working and makes the realistic
+        // launch-then-verify shape testable.
+        var name = executablePath;
+        var slash = name.LastIndexOfAny(['\\', '/']);
+        if (slash >= 0)
+        {
+            name = name[(slash + 1)..];
+        }
+
+        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            name = name[..^4];
+        }
+
+        if (name.Length > 0)
+        {
+            RunningProcesses.Add(name);
+        }
     }
 
     public ValueTask<bool> IsRunningAsync(string processName, CancellationToken cancellationToken) =>

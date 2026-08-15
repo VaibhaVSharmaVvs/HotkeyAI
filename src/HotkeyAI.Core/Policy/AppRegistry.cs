@@ -34,6 +34,9 @@ public static class AppRegistry
             "notepad",
             "spotify",
             "slack",
+            "teams",
+            "discord",
+            "cursor",
             "outlook",
             "obsidian",
         };

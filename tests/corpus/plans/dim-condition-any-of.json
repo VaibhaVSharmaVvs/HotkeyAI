@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "name": "Condition: any of",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "C"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "if",
+      "condition": {
+        "type": "any_of",
+        "conditions": [
+          {
+            "type": "process_running",
+            "processName": "Code"
+          },
+          {
+            "type": "process_running",
+            "processName": "devenv"
+          }
+        ]
+      },
+      "then": [
+        {
+          "id": "s1a",
+          "type": "notify",
+          "message": "either"
+        }
+      ]
+    }
+  ]
+}

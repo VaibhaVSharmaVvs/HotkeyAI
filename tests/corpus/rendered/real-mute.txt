@@ -1,0 +1,12 @@
+Mute
+
+Trigger    Ctrl + Alt + H
+
+Steps
+  1. [s1] Send the system volume mute command
+      (unverified)
+  2. [s2] Show a info toast: "Muted."
+      (unverified)
+
+0 of 2 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

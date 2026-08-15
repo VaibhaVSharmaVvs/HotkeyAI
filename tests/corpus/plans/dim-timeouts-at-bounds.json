@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "name": "Timeouts: at the policy bounds",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "SHIFT",
+      "F4"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "wait",
+      "durationMs": 100
+    },
+    {
+      "id": "s2",
+      "type": "wait_for_window",
+      "selector": {
+        "processName": "a"
+      },
+      "timeoutMs": 300000
+    },
+    {
+      "id": "s3",
+      "type": "notify",
+      "message": "bounds",
+      "timeoutMs": 100
+    }
+  ]
+}

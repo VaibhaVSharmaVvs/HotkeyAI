@@ -1,0 +1,18 @@
+End of Day
+
+Trigger    Ctrl + Alt + O
+
+Steps
+  1. [s1] Ask the window with process "Code" to close
+      (unverified)
+      on failure: continue to the next action
+  2. [s2] Ask the window with process "chrome" to close
+      (unverified)
+      on failure: continue to the next action
+  3. [s3] Copy "done for today" to the clipboard
+      (unverified)
+  4. [s4] Show a info toast: "Shutting down."
+      (unverified)
+
+0 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

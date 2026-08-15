@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "name": "App commands: media",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "P"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "send_appcommand",
+      "command": "media_play_pause"
+    },
+    {
+      "id": "s2",
+      "type": "send_appcommand",
+      "command": "media_next_track"
+    },
+    {
+      "id": "s3",
+      "type": "send_appcommand",
+      "command": "media_previous_track"
+    },
+    {
+      "id": "s4",
+      "type": "send_appcommand",
+      "command": "media_stop"
+    }
+  ]
+}

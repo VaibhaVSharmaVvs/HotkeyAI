@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "name": "App commands: browser",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "R"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "send_appcommand",
+      "command": "browser_back"
+    },
+    {
+      "id": "s2",
+      "type": "send_appcommand",
+      "command": "browser_forward"
+    },
+    {
+      "id": "s3",
+      "type": "send_appcommand",
+      "command": "browser_refresh"
+    }
+  ]
+}

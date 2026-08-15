@@ -1,0 +1,12 @@
+Predicate: path exists
+
+Trigger    Ctrl + Alt + Y
+
+Steps
+  1. [s1] If C:\Corpus\notes does exist
+      then:
+      1.1. [s1a] Show a info toast: "there"
+          (unverified)
+
+0 of 2 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

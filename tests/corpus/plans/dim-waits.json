@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "name": "Waits: process, window, duration",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "X"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "wait",
+      "durationMs": 100
+    },
+    {
+      "id": "s2",
+      "type": "wait_for_process",
+      "processName": "Notepad",
+      "timeoutMs": 100
+    },
+    {
+      "id": "s3",
+      "type": "wait_for_window",
+      "selector": {
+        "processName": "Notepad"
+      },
+      "timeoutMs": 100
+    }
+  ]
+}

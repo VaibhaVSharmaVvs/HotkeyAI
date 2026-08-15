@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "name": "Terminate: forced and polite",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "SHIFT",
+      "F1"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "terminate_process",
+      "processName": "polite",
+      "force": false,
+      "onError": "continue"
+    },
+    {
+      "id": "s2",
+      "type": "terminate_process",
+      "processName": "stubborn",
+      "force": true,
+      "onError": "continue"
+    }
+  ]
+}

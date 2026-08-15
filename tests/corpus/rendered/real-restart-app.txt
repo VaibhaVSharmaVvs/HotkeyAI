@@ -1,0 +1,14 @@
+Restart the Editor
+
+Trigger    Ctrl + Alt + K
+
+Steps
+  1. [s1] Terminate process "Code"
+      (unverified)
+      on failure: continue to the next action
+  2. [s2] Wait 2000 ms
+  3. [s3] Launch vscode
+      (verified) process "Code" is running within 20000 ms
+
+1 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

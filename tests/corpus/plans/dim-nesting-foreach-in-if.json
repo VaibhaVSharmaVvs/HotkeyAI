@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "name": "Nesting: foreach inside if",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "E"
+    ]
+  },
+  "variables": [
+    {
+      "name": "dirs",
+      "type": "pathList"
+    },
+    {
+      "name": "d",
+      "type": "path"
+    },
+    {
+      "name": "ok",
+      "type": "boolean"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "list_directories",
+      "path": "C:\\Corpus\\repos",
+      "into": "dirs"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "condition": {
+        "type": "variable_empty",
+        "variable": "dirs",
+        "negate": true
+      },
+      "then": [
+        {
+          "id": "s2a",
+          "type": "foreach",
+          "source": "dirs",
+          "itemVariable": "d",
+          "maxIterations": 5,
+          "body": [
+            {
+              "id": "s2a1",
+              "type": "path_exists",
+              "path": "${d.fullPath}",
+              "into": "ok"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

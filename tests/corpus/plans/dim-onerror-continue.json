@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "name": "On error: continue",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "T"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "focus_window",
+      "selector": {
+        "processName": "nothing-here"
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "s2",
+      "type": "notify",
+      "message": "reached anyway"
+    }
+  ]
+}
