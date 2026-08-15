@@ -623,25 +623,29 @@ Still honest about what it cannot know: a chord grabbed by a low-level keyboard 
 available and then never fires, and the window says so in as many words. Rewriting the trigger
 also reformats the plan's JSON, since it is written back through a parser rather than patched.
 
-### The reference automations have three defects on a real machine
+### ~~The reference automations have three defects on a real machine~~ — two fixed, one deliberate
 
-Found by running all eight on the author's desktop. Judged "working enough" to move on, and they
-are — but the reference automations are also the first-run examples, so a new user meets these
-first.
+Found by running all eight on the author's desktop.
 
-1. `open-solution.json` searches `*.sln` and misses `.slnx`, which is the current format. On the
-   machine it was tested on, the only solution present is this repository's own `HotkeyAI.slnx`,
-   so the example finds nothing.
-2. `close-distractions.json` and `work-environment.json` target Slack and Discord. Teams is not in
-   the app registry at all, and the current build is the Store one — process `ms-teams`, at
-   `%LOCALAPPDATA%\Microsoft\WindowsApps\ms-teams.exe`, not the old `Teams.exe`.
-3. `work-environment.json` names `vscode` explicitly, so it launches VS Code for someone who uses
-   Cursor. Cursor is not in the registry either.
+1. **Fixed.** `open-solution.json` searched `*.sln` and missed `.slnx`, which is the current
+   format — so on a machine whose only solution is this repository's own `HotkeyAI.slnx`, the
+   example found nothing at all. The pattern is now `*.sln*`, which also picks up `.slnf`
+   solution filters.
+2. **Fixed.** Teams, Discord and Cursor are in the app registry. The current Teams is the Store
+   build — process `ms-teams`, not the old `Teams.exe` — and both are listed, because the classic
+   client is still on plenty of machines. `close-distractions.json` now asks Teams to close, but
+   never force-kills it the way it does Slack: Teams is usually someone's work phone, and killing
+   a call is not a distraction-blocking feature.
+3. **Left alone, deliberately.** `work-environment.json` still names `vscode`, so it launches VS
+   Code for someone who uses Cursor. The examples are simultaneously the shipped first-run set and
+   the corpus that enforces 100% action coverage, and narrowing them to one person's installed
+   editor would cost both roles. `cursor` now resolves, so anyone can name it in their own copy —
+   changing which editor a *shipped* example assumes is a different decision.
 
-The tension worth resolving before changing them: the examples are simultaneously the shipped
-first-run set *and* the regression corpus that enforces 100% action coverage. They should not be
-narrowed to one person's installed software, so the fix is a wider app registry rather than
-machine-specific plans.
+   Doing this properly means a logical "editor" that resolves to whichever is installed, and that
+   is a larger change than it looks: the plans also select windows by process name, so the
+   registry would have to carry the process name alongside the executable, and every selector
+   would need to read it. Worth doing, worth doing on purpose.
 
 ### `work-environment` rearranges windows you are using
 

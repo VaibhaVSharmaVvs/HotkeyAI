@@ -42,6 +42,11 @@ public sealed class AppResolver
             ["notepad"] = ["notepad.exe"],
             ["spotify"] = ["Spotify.exe"],
             ["slack"] = ["slack.exe"],
+            // The current Teams is the Store build: process ms-teams, not the old Teams.exe.
+            // Both are listed because the classic client is still on plenty of machines.
+            ["teams"] = ["ms-teams.exe", "Teams.exe"],
+            ["discord"] = ["Discord.exe", "Update.exe"],
+            ["cursor"] = ["Cursor.exe"],
             ["outlook"] = ["olk.exe", "OUTLOOK.EXE"],
             ["obsidian"] = ["Obsidian.exe"],
         };
@@ -57,6 +62,9 @@ public sealed class AppResolver
             ["terminal"] = [@"%LOCALAPPDATA%\Microsoft\WindowsApps"],
             ["spotify"] = [@"%APPDATA%\Spotify", @"%LOCALAPPDATA%\Microsoft\WindowsApps"],
             ["slack"] = [@"%LOCALAPPDATA%\slack"],
+            ["teams"] = [@"%LOCALAPPDATA%\Microsoft\WindowsApps", @"%LOCALAPPDATA%\Microsoft\Teams\current"],
+            ["discord"] = [@"%LOCALAPPDATA%\Discord"],
+            ["cursor"] = [@"%LOCALAPPDATA%\Programs\cursor", @"%ProgramFiles%\cursor"],
             ["obsidian"] = [@"%LOCALAPPDATA%\Obsidian"],
             ["outlook"] = [@"%LOCALAPPDATA%\Microsoft\WindowsApps", @"%ProgramFiles%\Microsoft Office\root\Office16"],
             ["chrome"] = [@"%ProgramFiles%\Google\Chrome\Application", @"%ProgramFiles(x86)%\Google\Chrome\Application"],
