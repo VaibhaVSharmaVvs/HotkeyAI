@@ -248,14 +248,49 @@ public sealed class DashboardWindow : Window
             FontSize = 14,
         });
 
-        text.Children.Add(new TextBlock
+        var detail = new StackPanel
         {
-            Text = $"{entry.Chord}   ·   {entry.State}",
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 3, 0, 0),
+        };
+
+        // The chord is the control that changes it. Putting rebinding behind a separate button
+        // labelled something else would leave the most obvious thing on the row inert.
+        var rebind = new Button
+        {
+            Content = entry.Chord,
+            Foreground = Palette.Text,
+            Background = Palette.Edge,
+            BorderBrush = Palette.Edge,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 2, 8, 2),
+            FontSize = 11,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = "Change this hotkey",
+        };
+
+        rebind.Click += (_, _) =>
+        {
+            if (HotkeyCaptureWindow.Show(this, host, entry.FileName, entry.Name, entry.Chord))
+            {
+                Refresh();
+                Say($"{entry.Name} rebound.");
+            }
+        };
+
+        detail.Children.Add(rebind);
+
+        detail.Children.Add(new TextBlock
+        {
+            Text = entry.State,
             Foreground = entry.IsLive ? Palette.Muted : Palette.Danger,
             FontSize = 11,
-            Margin = new Thickness(0, 2, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
             TextWrapping = TextWrapping.Wrap,
         });
+
+        text.Children.Add(detail);
 
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);

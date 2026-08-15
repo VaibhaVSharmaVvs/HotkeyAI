@@ -63,28 +63,11 @@ public static partial class PolicyValidator
 
     private static void CheckTrigger(Automation automation, List<ValidationError> errors)
     {
-        var keys = automation.Trigger.Keys;
-        var nonModifiers = keys.Count(k => !Keys.IsModifier(k));
-
-        if (nonModifiers != 1)
+        // One rule, in HotkeyChord, shared with the dashboard's capture control. A second copy
+        // here would eventually tell the user a chord is fine that this validator then refuses.
+        foreach (var problem in HotkeyChord.Problems(automation.Trigger.Keys))
         {
-            errors.Add(Error(
-                "/trigger/keys",
-                $"A hotkey needs exactly one non-modifier key, found {nonModifiers}. "
-                + "Example: [\"CTRL\", \"ALT\", \"P\"]."));
-        }
-
-        if (!keys.Any(Keys.IsModifier))
-        {
-            errors.Add(Error(
-                "/trigger/keys",
-                "A hotkey needs at least one modifier (CTRL, ALT, SHIFT or WIN). Registering a "
-                + "bare key would swallow that key system-wide."));
-        }
-
-        if (keys.Distinct().Count() != keys.Count)
-        {
-            errors.Add(Error("/trigger/keys", "The chord repeats a key."));
+            errors.Add(Error("/trigger/keys", problem));
         }
     }
 

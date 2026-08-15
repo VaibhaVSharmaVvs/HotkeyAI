@@ -67,6 +67,14 @@ public static class AgentHost
     {
         ArgumentNullException.ThrowIfNull(args);
 
+        // A tray app that dies leaves nothing behind but an event-log entry naming an exception
+        // type, which is barely a clue. Whatever kills this process should say so in the log the
+        // tray menu opens, next to the automation that was running when it happened.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            AgentLog.Line($"FATAL: {e.ExceptionObject}");
+        };
+
         using var singleInstance = new Mutex(initiallyOwned: false, SingleInstanceMutex);
         var owned = false;
 
@@ -102,6 +110,8 @@ public static class AgentHost
 
     private static async Task<int> StartAsync()
     {
+        UiThread.Report = AgentLog.Line;
+
         Directory.CreateDirectory(AgentPaths.Automations);
 
         var policy = PolicyOptions.Default with
@@ -188,7 +198,14 @@ public static class AgentHost
 
         void Rebind() => Reload(store, host, runnable, history);
 
-        var dashboard = new DashboardHost(store, policy, Rebind);
+        // Releases every chord, and puts them all back when the caller is done with it.
+        IDisposable Suspend()
+        {
+            host.UnregisterAll();
+            return new Restore(Rebind);
+        }
+
+        var dashboard = new DashboardHost(store, policy, Rebind, host.Probe, Suspend, PanicChord);
 
         using var tray = await TrayIcon.ShowAsync(
             Tooltip(loaded.Count, live),
@@ -428,4 +445,10 @@ public static class AgentHost
         }
     }
 
+
+    /// <summary>Runs an action when disposed. For scoping a suspension to a using block.</summary>
+    private sealed class Restore(Action onDispose) : IDisposable
+    {
+        public void Dispose() => onDispose();
+    }
 }

@@ -31,7 +31,7 @@ validated plan, the engine runs and verifies it, and the agent sits in the tray.
 | ✅ | `HotkeyAI.Agent` — tray host, panic key, single-instance guard, daily log |
 | ✅ | `HotkeyAI.Agent` — autostart at login, and hotkey registration history |
 | ✅ | `HotkeyAI.Cli` — `validate`, `explain`, `schema`, `apps`, `run`, `list`, `approve`, `autostart` |
-| ⬜ | Hotkey capture in the UI — chords come from a plan's JSON today |
+| ✅ | Hotkey capture in the dashboard, with a live availability check |
 | ⬜ | Folder watcher — automations reload when you ask, not automatically |
 | ⬜ | `HotkeyAI.Cli` — `import` / `logs` |
 | ⬜ | V2 — the in-app API planner |

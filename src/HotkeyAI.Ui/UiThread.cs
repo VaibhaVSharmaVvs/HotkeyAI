@@ -28,6 +28,17 @@ public sealed class UiThread
         var thread = new Thread(() =>
         {
             started = Dispatcher.CurrentDispatcher;
+
+            // An exception on this thread would otherwise take the process down, and with it
+            // every hotkey — because a toast failed to draw. Logged and swallowed: a broken
+            // overlay is a bad afternoon, a dead agent is a broken product. The report is what
+            // stops "swallowed" meaning "hidden".
+            started.UnhandledException += (_, e) =>
+            {
+                Report?.Invoke($"UI thread: {e.Exception}");
+                e.Handled = true;
+            };
+
             ready.Set();
             Dispatcher.Run();
         })
@@ -47,6 +58,9 @@ public sealed class UiThread
 
     /// <summary>The shared UI thread, started on first access.</summary>
     public static UiThread Shared => Instance.Value;
+
+    /// <summary>Where UI-thread failures are reported. Set before the thread is first used.</summary>
+    public static Action<string>? Report { get; set; }
 
     /// <summary>Run a function on the UI thread and await its result.</summary>
     public Task<T> InvokeAsync<T>(Func<T> work)
