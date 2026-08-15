@@ -62,8 +62,18 @@ public sealed class FileVersionStore(string root, int keep = 20) : IVersionStore
             var directory = Folder(fileName);
             Directory.CreateDirectory(directory);
 
-            var stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmssfff", CultureInfo.InvariantCulture);
-            File.WriteAllText(Path.Combine(directory, $"{stamp}-{hash[..8]}.json"), content);
+            // Sequence first, clock second. Ordering must not depend on a timestamp: captures are
+            // fast enough to share a millisecond — reliably so on a quick filesystem — and the
+            // order then fell through to the content hash, which is arbitrary. That surfaced as a
+            // Linux-only CI failure, but the real cost would have been "restore the previous
+            // version" restoring some other version. The timestamp stays in the name because it
+            // is useful to a person reading the folder; nothing sorts by it.
+            var next = history.Count > 0 ? SequenceOf(history[0].Id) + 1 : 1;
+            var stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+
+            File.WriteAllText(
+                Path.Combine(directory, $"v{next:D6}-{stamp}-{hash[..8]}.json"),
+                content);
 
             Prune(directory);
         }
@@ -100,9 +110,7 @@ public sealed class FileVersionStore(string root, int keep = 20) : IVersionStore
                     content.ReplaceLineEndings("\n").TrimEnd('\n').Split('\n').Length));
             }
 
-            // Newest first: the name begins with a sortable timestamp, so ordering by name
-            // descending is ordering by time without trusting the filesystem's clock twice.
-            return [.. versions.OrderByDescending(v => v.Id, StringComparer.Ordinal)];
+            return [.. Newest(versions, v => v.Id)];
         }
 #pragma warning disable CA1031 // An unreadable history is an empty one, not a crash.
         catch (Exception)
@@ -134,8 +142,7 @@ public sealed class FileVersionStore(string root, int keep = 20) : IVersionStore
 
     private void Prune(string directory)
     {
-        var files = Directory.EnumerateFiles(directory, "*.json")
-            .OrderByDescending(f => f, StringComparer.Ordinal)
+        var files = Newest(Directory.EnumerateFiles(directory, "*.json"), Path.GetFileName)
             .Skip(keep)
             .ToList();
 
@@ -143,6 +150,39 @@ public sealed class FileVersionStore(string root, int keep = 20) : IVersionStore
         {
             File.Delete(file);
         }
+    }
+
+    /// <summary>Newest first, by capture sequence.</summary>
+    /// <remarks>
+    /// The name breaks the tie only between versions written before this scheme existed, which
+    /// carry no sequence and are therefore the oldest things here.
+    /// </remarks>
+    private static IEnumerable<T> Newest<T>(IEnumerable<T> items, Func<T, string> name) =>
+        items
+            .OrderByDescending(i => SequenceOf(name(i)))
+            .ThenByDescending(i => name(i), StringComparer.Ordinal);
+
+    /// <summary>
+    /// The capture sequence encoded in a version's file name.
+    /// </summary>
+    /// <remarks>
+    /// Returns -1 for a name written before versions were sequenced, so those sort below every
+    /// sequenced one. They are older by definition, and a folder captured under the previous
+    /// scheme keeps working rather than jumping to the top of the list forever.
+    /// </remarks>
+    private static long SequenceOf(string name)
+    {
+        if (!name.StartsWith('v'))
+        {
+            return -1;
+        }
+
+        var end = name.IndexOf('-', StringComparison.Ordinal);
+
+        return end > 1 && long.TryParse(
+            name.AsSpan(1, end - 1), CultureInfo.InvariantCulture, out var sequence)
+            ? sequence
+            : -1;
     }
 
     /// <summary>One folder per automation, named after it.</summary>

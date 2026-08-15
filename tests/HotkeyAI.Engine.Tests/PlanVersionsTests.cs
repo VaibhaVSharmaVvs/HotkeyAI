@@ -22,8 +22,10 @@ public sealed class PlanVersionsTests : IDisposable
         {
             Directory.Delete(root, recursive: true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Cleanup, not the thing under test. A temp folder that will not delete must not
+            // report as a failing test, and the two platforms throw differently here.
         }
     }
 
@@ -137,14 +139,19 @@ public sealed class PlanVersionsTests : IDisposable
         Assert.Null(store.Read("mine.json", first));
     }
 
-    [Fact]
-    public void AVersionIdCannotReachOutsideItsOwnFolder()
+    [Theory]
+    [InlineData(@"..\..\..\Windows\System32\drivers\etc\hosts")]
+    [InlineData("../../../etc/passwd")]
+    [InlineData("/etc/passwd")]
+    public void AVersionIdCannotReachOutsideItsOwnFolder(string id)
     {
         // The id comes from History, but it arrives back through a UI, so it is treated as input.
+        // Both separators, because only one of them is a separator on any given platform and the
+        // guard has to hold on the one that is.
         var store = Store();
         store.Capture("mine.json", "content");
 
-        Assert.Null(store.Read("mine.json", @"..\..\..\Windows\System32\drivers\etc\hosts"));
+        Assert.Null(store.Read("mine.json", id));
     }
 
     [Fact]
@@ -170,5 +177,30 @@ public sealed class PlanVersionsTests : IDisposable
         store.Capture("mine.json", "{\n  \"a\": 1\n}");
 
         Assert.Single(store.History("mine.json"));
+    }
+
+    [Fact]
+    public void ManyRapidCapturesStayInOrder()
+    {
+        // The regression test for a CI failure that only appeared on Linux. Ordering came from a
+        // millisecond timestamp in the file name, and captures are fast enough to share one — on
+        // a quick filesystem, several land in the same millisecond and the order then fell to the
+        // content hash, which is arbitrary. "Restore the previous version" restoring some other
+        // version is about as bad as this feature gets.
+        var store = Store(keep: 50);
+
+        foreach (var i in Enumerable.Range(1, 30))
+        {
+            store.Capture("mine.json", $"version {i}");
+        }
+
+        var history = store.History("mine.json");
+
+        Assert.Equal(30, history.Count);
+
+        for (var i = 0; i < 30; i++)
+        {
+            Assert.Equal($"version {30 - i}", store.Read("mine.json", history[i].Id));
+        }
     }
 }
