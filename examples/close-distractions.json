@@ -21,6 +21,13 @@
       "onError": "continue"
     },
     {
+      "id": "s2b",
+      "type": "close_window",
+      "comment": "The current Teams runs as ms-teams; the classic client was Teams. Asked to close but never force-killed, unlike Slack below — it is usually someone's work phone, and killing a call is not a distraction-blocking feature.",
+      "selector": { "processName": "ms-teams" },
+      "onError": "continue"
+    },
+    {
       "id": "s3",
       "type": "wait",
       "comment": "Nothing observable to wait on here: we are waiting for an app to decide whether to exit, and it may legitimately show a save prompt instead.",
