@@ -152,6 +152,13 @@ public static class AgentHost
         // unregistering hotkeys, joining the pump, disposing the tray — would run inline on that
         // thread, with the menu still on the stack, tearing down the UI from inside itself.
         var quit = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // The last run of each automation, kept so the dashboard can build a repair prompt from
+        // real evidence rather than from what the user remembers. In memory only: a run from
+        // before the agent started is in the log file, and parsing a transcript back out of a
+        // text log to feed a repair prompt would be building on a guess.
+        var lastRuns = new System.Collections.Concurrent.ConcurrentDictionary<string, RunRecord>(
+            StringComparer.OrdinalIgnoreCase);
         var running = 0;
 
         host.Pressed += name =>
@@ -185,7 +192,7 @@ public static class AgentHost
             {
                 try
                 {
-                    await ExecuteAsync(executor, name, plan, panic).ConfigureAwait(false);
+                    await ExecuteAsync(executor, name, plan, panic, lastRuns).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -214,7 +221,7 @@ public static class AgentHost
             return new Restore(Rebind);
         }
 
-        var dashboard = new DashboardHost(store, policy, Rebind, host.Probe, Suspend, PanicChord);
+        var dashboard = new DashboardHost(store, policy, Rebind, host.Probe, Suspend, PanicChord, lastRuns);
 
         using var tray = await TrayIcon.ShowAsync(
             Tooltip(loaded.Count, live),
@@ -376,7 +383,8 @@ public static class AgentHost
         PlanExecutor executor,
         string name,
         Automation plan,
-        CancellationTokenSource panic)
+        CancellationTokenSource panic,
+        System.Collections.Concurrent.ConcurrentDictionary<string, RunRecord> lastRuns)
     {
         AgentLog.Line();
         AgentLog.Line($"[{name}] triggered");
@@ -388,7 +396,11 @@ public static class AgentHost
         try
         {
             var result = await executor.RunAsync(plan, run.Token).ConfigureAwait(false);
-            AgentLog.Raw(result.ToTranscript());
+            var transcript = result.ToTranscript();
+
+            AgentLog.Raw(transcript);
+            lastRuns[name] = new RunRecord(
+                DateTimeOffset.Now, result.Succeeded, result.UnverifiedCount, transcript);
         }
 #pragma warning disable CA1031 // A failing automation must never take the agent down.
         catch (Exception ex)

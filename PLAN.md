@@ -568,9 +568,23 @@ showing the correct rendered plan, and can be enabled, run, and disabled from th
 
 - ✅ Test-run mode as a first-class feature — timestamped log exactly as the concept sketches,
   rendered live.
-- ✅ `RepairContext` exporter — bundles original intent, current plan, execution log, user's
-  failure description, and the capability list into one copyable block, formatted as a ready
-  prompt. This is V1's repair loop: the app assembles, you paste, Claude Code regenerates.
+- ✅ **Done.** Repair exporter — the dashboard's Repair button bundles the plan, the execution
+  transcript of the run being complained about, what the user says went wrong, and the same rules
+  the authoring prompt carries, into one copyable block.
+
+  The assembling is the whole value. Someone whose automation misbehaved knows what they expected
+  and nothing else: they do not have the JSON to hand, cannot recall which step failed, and would
+  never think to mention that three actions ran unverified — which is frequently the actual fault.
+  The application already knows all of it.
+
+  Two deliberate details. The transcript is *shown* in the dialog rather than only attached,
+  because half the time it answers the question on its own. And the prompt explicitly permits the
+  answer "the plan is not the problem" — an automation that failed because an application was not
+  running needs no repair, and a prompt that only ever asks for a rewrite will get one.
+
+  Repair appears only on automations that have actually run. The last run is held in memory, so a
+  run from before the agent started is in the log file but not offered here: parsing a transcript
+  back out of a text log to feed a repair prompt would be building on a guess.
 - ✅ Plan diff view — old vs new side by side. The concept shows only the new plan; the diff is
   what makes an AI-authored change reviewable.
 - ✅ Version history with `[Restore Version N]`, backed by the SQLite version table.
