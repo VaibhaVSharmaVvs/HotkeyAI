@@ -1,0 +1,18 @@
+Move: halves and maximized
+
+Trigger    Ctrl + Alt + Shift + M
+
+Steps
+  1. [s1] Move the window with process "a" to left half
+      (unverified)
+  2. [s2] Move the window with process "a" to right half
+      (unverified)
+  3. [s3] Move the window with process "a" to top half
+      (unverified)
+  4. [s4] Move the window with process "a" to bottom half
+      (unverified)
+  5. [s5] Move the window with process "a" to maximized
+      (unverified)
+
+0 of 5 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

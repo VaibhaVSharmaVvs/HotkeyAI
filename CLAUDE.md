@@ -87,6 +87,9 @@ src/        HotkeyAI.Core                  DSL, schema, validators — no Window
             HotkeyAI.Ui                    overlays, tray icon, dashboard
 tests/      HotkeyAI.Core.Tests            conformance, validators, error quality
             HotkeyAI.Engine.Tests          safety controls and execution, via FakeDesktop
+            corpus/plans                   57 golden plans: the regression suite
+            corpus/rendered                their pinned previews, one file per plan
+            Shared/                        linked into both test projects
 ```
 
 ## Conventions
@@ -122,6 +125,24 @@ tests/      HotkeyAI.Core.Tests            conformance, validators, error qualit
   the executor or the store.
 
 ## Commands
+
+### The regression corpus
+
+`tests/corpus/plans` holds 57 plans that must survive every change to the DSL, and
+`tests/corpus/rendered` holds the preview each one produces. Between them they pin what an
+automation *means*: the validator's verdict, the round trip through JSON, and the text a user
+reads before approving. Fifteen are realistic automations; the rest each pin one dimension —
+a postcondition type, a predicate, a nesting depth, a selector field.
+
+Changing the renderer deliberately means regenerating the previews and **reading the diff**:
+
+```powershell
+$env:HOTKEYAI_UPDATE_GOLDENS = "1"; dotnet test tests/HotkeyAI.Core.Tests; $env:HOTKEYAI_UPDATE_GOLDENS = $null
+```
+
+Regenerating without reading the diff defeats the test. A corpus plan is also executed against
+`FakeDesktop`, which is what catches a primitive added to the schema and the records but never
+taught to `PlanExecutor.DispatchAsync`.
 
 ```powershell
 # authoring an automation

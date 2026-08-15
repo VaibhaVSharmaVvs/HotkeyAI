@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "name": "Nesting: if inside foreach",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "F"
+    ]
+  },
+  "variables": [
+    {
+      "name": "files",
+      "type": "pathList"
+    },
+    {
+      "name": "f",
+      "type": "path"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "list_files",
+      "path": "C:\\Corpus\\src",
+      "pattern": "*.json",
+      "depth": 2,
+      "into": "files"
+    },
+    {
+      "id": "s2",
+      "type": "foreach",
+      "source": "files",
+      "itemVariable": "f",
+      "maxIterations": 10,
+      "body": [
+        {
+          "id": "s2a",
+          "type": "if",
+          "condition": {
+            "type": "path_exists",
+            "path": "${f.fullPath}"
+          },
+          "then": [
+            {
+              "id": "s2a1",
+              "type": "notify",
+              "message": "found ${f.name}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "name": "Mute",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "H"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "send_appcommand",
+      "command": "volume_mute"
+    },
+    {
+      "id": "s2",
+      "type": "notify",
+      "message": "Muted.",
+      "level": "info"
+    }
+  ]
+}

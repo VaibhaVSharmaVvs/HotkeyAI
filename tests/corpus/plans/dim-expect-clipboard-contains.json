@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "Expect: clipboard contains",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "S"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "set_clipboard",
+      "text": "hello corpus",
+      "expect": {
+        "type": "clipboard_matches",
+        "contains": "corpus",
+        "withinMs": 3000
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "name": "Predicate: variable equals",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "Z"
+    ]
+  },
+  "variables": [
+    {
+      "name": "answer",
+      "type": "text"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "show_input",
+      "prompt": "Type yes",
+      "into": "answer"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "condition": {
+        "type": "variable_equals",
+        "variable": "answer",
+        "value": "yes"
+      },
+      "then": [
+        {
+          "id": "s2a",
+          "type": "notify",
+          "message": "matched"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "name": "Search the Clipboard",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "N"
+    ]
+  },
+  "variables": [
+    {
+      "name": "query",
+      "type": "text"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "get_clipboard",
+      "into": "query"
+    },
+    {
+      "id": "s2",
+      "type": "launch_process",
+      "app": "chrome",
+      "argv": [
+        "https://example.invalid/?q=${query}"
+      ]
+    }
+  ]
+}

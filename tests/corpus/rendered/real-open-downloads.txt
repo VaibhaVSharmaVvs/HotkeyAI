@@ -1,0 +1,10 @@
+Open Downloads
+
+Trigger    Ctrl + Alt + E
+
+Steps
+  1. [s1] Open C:\Corpus\Downloads with its default application
+      (unverified)
+
+0 of 1 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "name": "Predicate: process not running",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "W"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "if",
+      "condition": {
+        "type": "process_running",
+        "processName": "Code",
+        "negate": true
+      },
+      "then": [
+        {
+          "id": "s1a",
+          "type": "notify",
+          "message": "not running"
+        }
+      ]
+    }
+  ]
+}

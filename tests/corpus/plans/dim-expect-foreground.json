@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "name": "Expect: foreground process",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "U"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "focus_window",
+      "selector": {
+        "processName": "Notepad"
+      },
+      "expect": {
+        "type": "foreground_process_is",
+        "processName": "Notepad",
+        "withinMs": 5000
+      }
+    }
+  ]
+}

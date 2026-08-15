@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "name": "Nesting: if inside if",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "D"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "if",
+      "condition": {
+        "type": "process_running",
+        "processName": "Code"
+      },
+      "then": [
+        {
+          "id": "s1a",
+          "type": "if",
+          "condition": {
+            "type": "path_exists",
+            "path": "C:\\Corpus\\src"
+          },
+          "then": [
+            {
+              "id": "s1a1",
+              "type": "notify",
+              "message": "deepest level"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

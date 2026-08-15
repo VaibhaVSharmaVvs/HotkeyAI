@@ -1,0 +1,14 @@
+Notify: every level
+
+Trigger    Ctrl + Alt + Shift + S
+
+Steps
+  1. [s1] Show a info toast: "information"
+      (unverified)
+  2. [s2] Show a warning toast: "a warning"
+      (unverified)
+  3. [s3] Show a error toast: "an error"
+      (unverified)
+
+0 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

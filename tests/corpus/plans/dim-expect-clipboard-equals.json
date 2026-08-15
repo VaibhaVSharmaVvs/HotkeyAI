@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "Expect: clipboard equals",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "T"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "set_clipboard",
+      "text": "exact",
+      "expect": {
+        "type": "clipboard_matches",
+        "equals": "exact",
+        "withinMs": 3000
+      }
+    }
+  ]
+}

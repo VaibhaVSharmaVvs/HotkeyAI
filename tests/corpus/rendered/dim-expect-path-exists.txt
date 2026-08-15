@@ -1,0 +1,9 @@
+Expect: path exists
+
+Trigger    Ctrl + Alt + R
+
+Steps
+  1. [s1] Open C:\Corpus\notes with its default application
+      (verified) C:\Corpus\notes exists within 5000 ms
+
+1 of 1 actions carry a postcondition the engine can check.

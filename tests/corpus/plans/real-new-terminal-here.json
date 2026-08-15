@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "name": "New Terminal Here",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "F"
+    ]
+  },
+  "variables": [
+    {
+      "name": "folder",
+      "type": "text"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "show_input",
+      "prompt": "Which folder?",
+      "defaultValue": "C:\\Corpus\\src",
+      "into": "folder"
+    },
+    {
+      "id": "s2",
+      "type": "launch_process",
+      "app": "terminal",
+      "argv": [
+        "-d",
+        "${folder}"
+      ],
+      "workingDirectory": "C:\\Corpus"
+    }
+  ]
+}

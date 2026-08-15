@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "name": "Arrange Two Monitors",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "M"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "move_window",
+      "selector": {
+        "processName": "Code"
+      },
+      "position": "maximized",
+      "monitor": "primary"
+    },
+    {
+      "id": "s2",
+      "type": "move_window",
+      "selector": {
+        "processName": "chrome"
+      },
+      "position": "maximized",
+      "monitor": "secondary"
+    }
+  ]
+}

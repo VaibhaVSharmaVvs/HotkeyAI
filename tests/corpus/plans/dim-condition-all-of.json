@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "name": "Condition: all of",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "B"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "if",
+      "condition": {
+        "type": "all_of",
+        "conditions": [
+          {
+            "type": "process_running",
+            "processName": "Code"
+          },
+          {
+            "type": "path_exists",
+            "path": "C:\\Corpus\\src"
+          }
+        ]
+      },
+      "then": [
+        {
+          "id": "s1a",
+          "type": "notify",
+          "message": "both"
+        }
+      ]
+    }
+  ]
+}

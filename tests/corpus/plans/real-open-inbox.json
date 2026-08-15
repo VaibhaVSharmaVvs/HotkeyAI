@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "name": "Open Inbox",
+  "description": "Opens mail and puts it in front.",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "A"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "launch_process",
+      "app": "outlook",
+      "expect": {
+        "type": "process_running",
+        "processName": "olk",
+        "withinMs": 20000
+      }
+    },
+    {
+      "id": "s2",
+      "type": "wait_for_window",
+      "selector": {
+        "processName": "olk"
+      },
+      "timeoutMs": 20000
+    },
+    {
+      "id": "s3",
+      "type": "focus_window",
+      "selector": {
+        "processName": "olk"
+      },
+      "expect": {
+        "type": "foreground_process_is",
+        "processName": "olk",
+        "withinMs": 5000
+      }
+    },
+    {
+      "id": "s4",
+      "type": "maximize_window",
+      "selector": {
+        "processName": "olk"
+      }
+    }
+  ]
+}

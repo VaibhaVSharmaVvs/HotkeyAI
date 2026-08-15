@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "name": "Selector: title contains",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "I"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "focus_window",
+      "selector": {
+        "processName": "chrome",
+        "titleContains": "Inbox"
+      }
+    }
+  ]
+}

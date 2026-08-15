@@ -1,0 +1,15 @@
+Pick a Repo
+
+Trigger    Ctrl + Alt + G
+Variables  repos: pathList, chosen: path
+
+Steps
+  1. [s1] List folders in C:\Corpus\repos (depth 1) into ${repos}
+      (unverified)
+  2. [s2] Ask the user to pick from ${repos} into ${chosen} — "Open which repo?"
+      (unverified)
+  3. [s3] Launch vscode with ${chosen.fullPath}
+      (unverified)
+
+0 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

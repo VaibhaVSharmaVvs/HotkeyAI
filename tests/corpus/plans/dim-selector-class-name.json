@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "name": "Selector: class name",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "K"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "focus_window",
+      "selector": {
+        "className": "CabinetWClass"
+      }
+    }
+  ]
+}

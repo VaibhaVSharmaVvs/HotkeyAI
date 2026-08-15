@@ -1,0 +1,13 @@
+Waits: process, window, duration
+
+Trigger    Ctrl + Alt + Shift + X
+
+Steps
+  1. [s1] Wait 100 ms
+  2. [s2] Wait until process "Notepad" is running
+      (unverified)
+  3. [s3] Wait for the window with process "Notepad" to appear
+      (unverified)
+
+0 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

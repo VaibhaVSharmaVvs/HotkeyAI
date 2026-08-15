@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "name": "Predicate: variable empty",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "A"
+    ]
+  },
+  "variables": [
+    {
+      "name": "text",
+      "type": "text"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "get_clipboard",
+      "into": "text"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "condition": {
+        "type": "variable_empty",
+        "variable": "text",
+        "negate": true
+      },
+      "then": [
+        {
+          "id": "s2a",
+          "type": "notify",
+          "message": "has something"
+        }
+      ]
+    }
+  ]
+}

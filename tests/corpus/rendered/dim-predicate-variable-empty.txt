@@ -1,0 +1,15 @@
+Predicate: variable empty
+
+Trigger    Ctrl + Alt + Shift + A
+Variables  text: text
+
+Steps
+  1. [s1] Read the clipboard into ${text}
+      (unverified)
+  2. [s2] If ${text} is not empty
+      then:
+      2.1. [s2a] Show a info toast: "has something"
+          (unverified)
+
+0 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

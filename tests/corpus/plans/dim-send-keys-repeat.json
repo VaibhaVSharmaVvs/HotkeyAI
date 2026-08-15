@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "name": "Send keys: chords and repeat",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "W"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "send_keys",
+      "keys": [
+        "CTRL",
+        "S"
+      ]
+    },
+    {
+      "id": "s2",
+      "type": "send_keys",
+      "keys": [
+        "CTRL",
+        "SHIFT",
+        "TAB"
+      ],
+      "repeat": 3
+    },
+    {
+      "id": "s3",
+      "type": "send_keys",
+      "keys": [
+        "ALT",
+        "F4"
+      ],
+      "onError": "continue"
+    }
+  ]
+}

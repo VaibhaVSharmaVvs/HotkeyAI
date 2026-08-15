@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "name": "Expect: window exists",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "Q"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "launch_process",
+      "app": "notepad",
+      "expect": {
+        "type": "window_exists",
+        "selector": {
+          "processName": "Notepad"
+        },
+        "withinMs": 10000
+      }
+    }
+  ]
+}

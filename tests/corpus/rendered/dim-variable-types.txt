@@ -1,0 +1,19 @@
+Variables: every declared type
+
+Trigger    Ctrl + Alt + Shift + Y
+Variables  asText: text, asPathList: pathList, asPath: path, asBoolean: boolean
+
+Steps
+  1. [s1] Read the clipboard into ${asText}
+      (unverified)
+  2. [s2] List folders in C:\Corpus\repos (depth 1) into ${asPathList}
+      (unverified)
+  3. [s3] Ask the user to pick from ${asPathList} into ${asPath} — "Pick"
+      (unverified)
+  4. [s4] Check whether ${asPath.fullPath} exists, into ${asBoolean}
+      (unverified)
+  5. [s5] Show a info toast: "${asText} ${asPath.name}"
+      (unverified)
+
+0 of 5 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

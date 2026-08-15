@@ -1,0 +1,16 @@
+Nesting: foreach inside if
+
+Trigger    Ctrl + Alt + Shift + E
+Variables  dirs: pathList, d: path, ok: boolean
+
+Steps
+  1. [s1] List folders in C:\Corpus\repos (depth 1) into ${dirs}
+      (unverified)
+  2. [s2] If ${dirs} is not empty
+      then:
+      2.1. [s2a] For each item in ${dirs} as ${d} (at most 5)
+          2.1.1. [s2a1] Check whether ${d.fullPath} exists, into ${ok}
+              (unverified)
+
+0 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

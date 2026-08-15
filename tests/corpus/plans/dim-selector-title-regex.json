@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "name": "Selector: title regex",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "J"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "focus_window",
+      "selector": {
+        "titleRegex": "^Build .* succeeded$"
+      }
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "name": "Variables: every declared type",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "Y"
+    ]
+  },
+  "variables": [
+    {
+      "name": "asText",
+      "type": "text"
+    },
+    {
+      "name": "asPathList",
+      "type": "pathList"
+    },
+    {
+      "name": "asPath",
+      "type": "path"
+    },
+    {
+      "name": "asBoolean",
+      "type": "boolean"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "get_clipboard",
+      "into": "asText"
+    },
+    {
+      "id": "s2",
+      "type": "list_directories",
+      "path": "C:\\Corpus\\repos",
+      "into": "asPathList"
+    },
+    {
+      "id": "s3",
+      "type": "show_picker",
+      "source": "asPathList",
+      "into": "asPath",
+      "prompt": "Pick"
+    },
+    {
+      "id": "s4",
+      "type": "path_exists",
+      "path": "${asPath.fullPath}",
+      "into": "asBoolean"
+    },
+    {
+      "id": "s5",
+      "type": "notify",
+      "message": "${asText} ${asPath.name}"
+    }
+  ]
+}

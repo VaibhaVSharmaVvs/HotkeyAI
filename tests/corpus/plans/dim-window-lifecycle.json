@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "name": "Windows: the whole lifecycle",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "SHIFT",
+      "F3"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "minimize_window",
+      "selector": {
+        "processName": "a"
+      }
+    },
+    {
+      "id": "s2",
+      "type": "maximize_window",
+      "selector": {
+        "processName": "a"
+      }
+    },
+    {
+      "id": "s3",
+      "type": "focus_window",
+      "selector": {
+        "processName": "a"
+      }
+    },
+    {
+      "id": "s4",
+      "type": "close_window",
+      "selector": {
+        "processName": "a"
+      }
+    }
+  ]
+}

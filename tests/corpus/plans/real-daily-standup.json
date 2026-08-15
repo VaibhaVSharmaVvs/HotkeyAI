@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "name": "Daily Standup",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "B"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "if",
+      "condition": {
+        "type": "process_running",
+        "processName": "ms-teams",
+        "negate": true
+      },
+      "then": [
+        {
+          "id": "s1a",
+          "type": "launch_process",
+          "app": "teams",
+          "expect": {
+            "type": "window_exists",
+            "selector": {
+              "processName": "ms-teams"
+            },
+            "withinMs": 30000
+          }
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "type": "move_window",
+      "selector": {
+        "processName": "ms-teams"
+      },
+      "position": "right_half"
+    },
+    {
+      "id": "s3",
+      "type": "notify",
+      "message": "Standup in five minutes.",
+      "level": "info"
+    }
+  ]
+}

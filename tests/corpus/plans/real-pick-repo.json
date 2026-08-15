@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "name": "Pick a Repo",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "G"
+    ]
+  },
+  "variables": [
+    {
+      "name": "repos",
+      "type": "pathList"
+    },
+    {
+      "name": "chosen",
+      "type": "path"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "list_directories",
+      "path": "C:\\Corpus\\repos",
+      "into": "repos"
+    },
+    {
+      "id": "s2",
+      "type": "show_picker",
+      "source": "repos",
+      "prompt": "Open which repo?",
+      "into": "chosen",
+      "onError": "abort"
+    },
+    {
+      "id": "s3",
+      "type": "launch_process",
+      "app": "vscode",
+      "argv": [
+        "${chosen.fullPath}"
+      ]
+    }
+  ]
+}

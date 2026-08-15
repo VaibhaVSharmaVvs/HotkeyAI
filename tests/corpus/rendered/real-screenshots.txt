@@ -1,0 +1,18 @@
+Open Screenshots
+
+Trigger    Ctrl + Alt + L
+Variables  there: boolean
+
+Steps
+  1. [s1] Check whether C:\Corpus\Pictures\Screenshots exists, into ${there}
+      (unverified)
+  2. [s2] If ${there} is "true"
+      then:
+      2.1. [s2a] Open C:\Corpus\Pictures\Screenshots with its default application
+          (unverified)
+      otherwise:
+      2e.1. [s2b] Show a warning toast: "No screenshots folder yet."
+          (unverified)
+
+0 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

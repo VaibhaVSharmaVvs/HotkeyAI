@@ -1,0 +1,15 @@
+Send keys: chords and repeat
+
+Trigger    Ctrl + Alt + Shift + W
+
+Steps
+  1. [s1] Press Ctrl + S in the focused window
+      (unverified)
+  2. [s2] Press Ctrl + Shift + Tab, 3 times in the focused window
+      (unverified)
+  3. [s3] Press Alt + F4 in the focused window
+      (unverified)
+      on failure: continue to the next action
+
+0 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

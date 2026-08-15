@@ -45,7 +45,7 @@ Start an application. Prefer 'app' over 'path': naming a logical application let
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `app` | `string` | one of | Logical application name resolved by the engine's app registry. Known values include: vscode, explorer, chrome, edge, firefox, terminal, powershell, notepad, spotify, slack, outlook, obsidian. If the app you need is absent, use 'path'. |
+| `app` | `string` | one of | Logical application name resolved by the engine's app registry. Known values include: vscode, explorer, chrome, edge, firefox, terminal, powershell, notepad, spotify, slack, teams, discord, cursor, outlook, obsidian. If the app you need is absent, use 'path'. |
 | `path` | `string` | one of | Absolute path to an executable. Must sit under one of the configured allowed roots — the policy validator rejects anything else. |
 | `argv` | list of `string` | no | Arguments as a list of separate strings, never one command line. Each element is passed as a single argument, so no quoting or escaping is needed and shell metacharacters have no special meaning. |
 | `workingDirectory` | `string` | no | Working directory for the new process. Defaults to the executable's own directory. |

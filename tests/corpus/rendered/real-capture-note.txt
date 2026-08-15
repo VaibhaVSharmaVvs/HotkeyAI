@@ -1,0 +1,22 @@
+Capture Note
+
+Trigger    Ctrl + Alt + D
+Variables  captured: text
+
+Steps
+  1. [s1] Read the clipboard into ${captured}
+      (unverified)
+  2. [s2] If ${captured} is empty
+      then:
+      2.1. [s2a] Stop the automation: "Nothing on the clipboard to capture."
+  3. [s3] Launch notepad
+      (unverified)
+  4. [s4] Wait for the window with process "Notepad" to appear
+      (unverified)
+  5. [s5] Focus the window with process "Notepad"
+      (unverified)
+  6. [s6] Type "${captured}" into the focused window
+      (unverified)
+
+0 of 7 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

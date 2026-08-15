@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "name": "Move: monitor choices",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "O"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "left_half",
+      "monitor": "primary"
+    },
+    {
+      "id": "s2",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "left_half",
+      "monitor": "secondary"
+    },
+    {
+      "id": "s3",
+      "type": "move_window",
+      "selector": {
+        "processName": "a"
+      },
+      "position": "left_half",
+      "monitor": "2"
+    }
+  ]
+}

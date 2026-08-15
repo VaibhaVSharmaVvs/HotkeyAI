@@ -1,0 +1,18 @@
+Focus Mode
+
+Trigger    Ctrl + Alt + C
+
+Steps
+  1. [s1] Ask the window with process "slack" to close
+      (unverified)
+      on failure: continue to the next action
+  2. [s2] Minimize the window with process "chrome"
+      (unverified)
+      on failure: continue to the next action
+  3. [s3] Maximize the window with process "Code"
+      (unverified)
+  4. [s4] Show a info toast: "Focus mode on."
+      (unverified)
+
+0 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

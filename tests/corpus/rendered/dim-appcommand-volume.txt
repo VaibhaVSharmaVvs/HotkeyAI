@@ -1,0 +1,14 @@
+App commands: volume
+
+Trigger    Ctrl + Alt + Shift + Q
+
+Steps
+  1. [s1] Send the system volume up command
+      (unverified)
+  2. [s2] Send the system volume down command
+      (unverified)
+  3. [s3] Send the system volume mute command
+      (unverified)
+
+0 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

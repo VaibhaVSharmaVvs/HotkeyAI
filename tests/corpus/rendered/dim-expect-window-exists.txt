@@ -1,0 +1,9 @@
+Expect: window exists
+
+Trigger    Ctrl + Alt + Q
+
+Steps
+  1. [s1] Launch notepad
+      (verified) the window with process "Notepad" exists within 10000 ms
+
+1 of 1 actions carry a postcondition the engine can check.

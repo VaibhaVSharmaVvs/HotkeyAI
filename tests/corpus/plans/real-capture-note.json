@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "name": "Capture Note",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "D"
+    ]
+  },
+  "variables": [
+    {
+      "name": "captured",
+      "type": "text"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "get_clipboard",
+      "into": "captured"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "condition": {
+        "type": "variable_empty",
+        "variable": "captured"
+      },
+      "then": [
+        {
+          "id": "s2a",
+          "type": "abort",
+          "reason": "Nothing on the clipboard to capture."
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "launch_process",
+      "app": "notepad"
+    },
+    {
+      "id": "s4",
+      "type": "wait_for_window",
+      "selector": {
+        "processName": "Notepad"
+      },
+      "timeoutMs": 15000
+    },
+    {
+      "id": "s5",
+      "type": "focus_window",
+      "selector": {
+        "processName": "Notepad"
+      }
+    },
+    {
+      "id": "s6",
+      "type": "type_text",
+      "text": "${captured}"
+    }
+  ]
+}

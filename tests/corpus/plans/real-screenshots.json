@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "name": "Open Screenshots",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "L"
+    ]
+  },
+  "variables": [
+    {
+      "name": "there",
+      "type": "boolean"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "path_exists",
+      "path": "C:\\Corpus\\Pictures\\Screenshots",
+      "into": "there"
+    },
+    {
+      "id": "s2",
+      "type": "if",
+      "condition": {
+        "type": "variable_equals",
+        "variable": "there",
+        "value": "true"
+      },
+      "then": [
+        {
+          "id": "s2a",
+          "type": "open_path",
+          "path": "C:\\Corpus\\Pictures\\Screenshots"
+        }
+      ],
+      "else": [
+        {
+          "id": "s2b",
+          "type": "notify",
+          "message": "No screenshots folder yet.",
+          "level": "warning"
+        }
+      ]
+    }
+  ]
+}

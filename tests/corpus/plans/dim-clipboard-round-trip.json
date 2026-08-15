@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "name": "Clipboard: set then read",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "SHIFT",
+      "F2"
+    ]
+  },
+  "variables": [
+    {
+      "name": "back",
+      "type": "text"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "set_clipboard",
+      "text": "corpus round trip"
+    },
+    {
+      "id": "s2",
+      "type": "get_clipboard",
+      "into": "back"
+    },
+    {
+      "id": "s3",
+      "type": "notify",
+      "message": "read back ${back}"
+    }
+  ]
+}

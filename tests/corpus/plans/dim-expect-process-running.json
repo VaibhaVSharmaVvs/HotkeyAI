@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "Expect: process running",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "P"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "launch_process",
+      "app": "notepad",
+      "expect": {
+        "type": "process_running",
+        "processName": "Notepad",
+        "withinMs": 10000
+      }
+    }
+  ]
+}

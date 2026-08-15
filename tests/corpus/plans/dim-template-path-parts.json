@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "name": "Template: path properties",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "H"
+    ]
+  },
+  "variables": [
+    {
+      "name": "files",
+      "type": "pathList"
+    },
+    {
+      "name": "one",
+      "type": "path"
+    }
+  ],
+  "actions": [
+    {
+      "id": "s1",
+      "type": "list_files",
+      "path": "C:\\Corpus\\src",
+      "pattern": "*.cs",
+      "depth": 1,
+      "into": "files"
+    },
+    {
+      "id": "s2",
+      "type": "show_picker",
+      "source": "files",
+      "prompt": "Which file?",
+      "into": "one"
+    },
+    {
+      "id": "s3",
+      "type": "notify",
+      "message": "${one.name} in ${one.parent} (${one.extension}) at ${one.fullPath}"
+    }
+  ]
+}

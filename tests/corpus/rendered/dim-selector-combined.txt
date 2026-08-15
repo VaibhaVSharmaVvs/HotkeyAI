@@ -1,0 +1,10 @@
+Selector: every field
+
+Trigger    Ctrl + Alt + Shift + L
+
+Steps
+  1. [s1] Wait for the window with process "chrome" and title containing "Docs" and title matching /.*Docs.*/ and class "Chrome_WidgetWin_1" to appear
+      (unverified)
+
+0 of 1 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

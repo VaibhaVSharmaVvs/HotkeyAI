@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "name": "Selector: every field",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "L"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "wait_for_window",
+      "timeoutMs": 5000,
+      "selector": {
+        "processName": "chrome",
+        "titleContains": "Docs",
+        "titleRegex": ".*Docs.*",
+        "className": "Chrome_WidgetWin_1"
+      }
+    }
+  ]
+}

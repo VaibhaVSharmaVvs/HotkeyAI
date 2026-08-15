@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "name": "Notify: every level",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "S"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "notify",
+      "message": "information",
+      "level": "info"
+    },
+    {
+      "id": "s2",
+      "type": "notify",
+      "message": "a warning",
+      "level": "warning"
+    },
+    {
+      "id": "s3",
+      "type": "notify",
+      "message": "an error",
+      "level": "error"
+    }
+  ]
+}

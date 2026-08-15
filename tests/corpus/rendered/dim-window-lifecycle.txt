@@ -1,0 +1,16 @@
+Windows: the whole lifecycle
+
+Trigger    Ctrl + Shift + F3
+
+Steps
+  1. [s1] Minimize the window with process "a"
+      (unverified)
+  2. [s2] Maximize the window with process "a"
+      (unverified)
+  3. [s3] Focus the window with process "a"
+      (unverified)
+  4. [s4] Ask the window with process "a" to close
+      (unverified)
+
+0 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

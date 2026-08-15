@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "name": "On error: abort",
+  "trigger": {
+    "type": "hotkey",
+    "keys": [
+      "CTRL",
+      "ALT",
+      "SHIFT",
+      "U"
+    ]
+  },
+  "actions": [
+    {
+      "id": "s1",
+      "type": "focus_window",
+      "selector": {
+        "processName": "nothing-here"
+      },
+      "onError": "abort"
+    },
+    {
+      "id": "s2",
+      "type": "notify",
+      "message": "not reached"
+    }
+  ]
+}

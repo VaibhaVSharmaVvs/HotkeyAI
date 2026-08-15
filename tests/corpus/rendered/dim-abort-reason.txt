@@ -1,0 +1,14 @@
+Abort: with a reason
+
+Trigger    Ctrl + Alt + Shift + Z
+
+Steps
+  1. [s1] If process "never-running" is running
+      then:
+      1.1. [s1a] Show a info toast: "unreachable"
+          (unverified)
+      otherwise:
+      1e.1. [s1b] Stop the automation: "The prerequisite is not running."
+
+0 of 3 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.
