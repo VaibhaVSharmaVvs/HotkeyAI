@@ -58,6 +58,35 @@ public sealed record LogEntry(
     }
 }
 
+/// <summary>
+/// Watches a run while it happens, rather than reading it afterwards.
+/// </summary>
+/// <remarks>
+/// Exists for test-run mode. <see cref="ExecutionResult"/> arrives only once the plan has
+/// finished, which is too late for the one question a person testing an automation actually has:
+/// <em>which step is it stuck on right now?</em> A transcript that appears only after the run
+/// answers that by omission — you see two lines, then nothing, and the plan may be hung, waiting,
+/// or done.
+/// <para>
+/// <see cref="Starting"/> is what makes the difference, because an action is logged when it
+/// <em>finishes</em>. Without it a ten-second wait shows nothing at all while it waits.
+/// </para>
+/// <para>
+/// Implementations must not throw. The executor swallows anything that escapes — a watcher is an
+/// onlooker, and a broken one must never be able to stop an automation that was working.
+/// </para>
+/// </remarks>
+public interface IRunObserver
+{
+    /// <summary>An action is about to run.</summary>
+    /// <param name="actionType">The DSL type, e.g. <c>launch_process</c>.</param>
+    /// <param name="actionId">The plan's id for it, when it declared one.</param>
+    void Starting(string actionType, string? actionId);
+
+    /// <summary>An action finished. The entry is the same one the transcript will hold.</summary>
+    void Finished(LogEntry entry);
+}
+
 /// <summary>The outcome of a whole run.</summary>
 /// <param name="Succeeded">True only if every action completed and no postcondition failed.</param>
 /// <param name="Entries">The full log, in order.</param>

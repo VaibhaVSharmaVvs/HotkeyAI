@@ -326,6 +326,18 @@ public sealed class DashboardWindow : Window
             actions.Children.Add(Button("Review", () => Review(entry)));
         }
 
+        // Watching it run is how the verdict below gets answered honestly, so it sits next to
+        // them rather than somewhere else on the row.
+        //
+        // Absent rather than disabled when the plan cannot run, because the reason is always
+        // something the row already says and usually the Review button next to it. An offered
+        // button that refuses would have to explain itself in the status line, which on a full
+        // list is scrolled out of sight — a refusal nobody reads is a button that does nothing.
+        if (entry.CanTestRun)
+        {
+            actions.Children.Add(Button("Test run", () => TestRun(entry)));
+        }
+
         // The two halves of "does this actually do what I meant?". Clicking the verdict an
         // automation already has withdraws it, so a wrong click is one click to undo.
         actions.Children.Add(Verdict("Works", entry, HealthState.Works));
@@ -444,6 +456,34 @@ public sealed class DashboardWindow : Window
 
         window.Content = layout;
         window.ShowDialog();
+    }
+
+    /// <summary>
+    /// Run an automation in front of the user, and record what they make of it.
+    /// </summary>
+    /// <remarks>
+    /// Refused up front when it cannot run, rather than opening a window that immediately reports
+    /// a refusal. The commonest reason is that the plan has not been approved yet, and the useful
+    /// response to that is the Review button two inches away — not a dialog.
+    /// </remarks>
+    private void TestRun(DashboardEntry entry)
+    {
+        if (host.WhyNotTestable(entry.FileName) is { } refusal)
+        {
+            Say($"{entry.Name}: {refusal}");
+            return;
+        }
+
+        if (TestRunWindow.Show(this, host, entry))
+        {
+            Refresh();
+            Say($"{entry.Name} — verdict recorded.");
+        }
+        else
+        {
+            // Refreshed either way. The run itself changes the row, because "last run" is on it.
+            Refresh();
+        }
     }
 
     /// <summary>
