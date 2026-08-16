@@ -14,6 +14,9 @@
          Overridden here rather than in Directory.Build.props: Core, Engine and the tests keep
          invariant mode, which is what makes validator behaviour identical on every machine. -->
     <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Same mark on the CLI, so the two executables in the install folder are visibly one
+         product rather than an app and a stray console tool. -->
+    <ApplicationIcon>..\..\assets\hotkeyai.ico</ApplicationIcon>
     <!-- Windows-targeted since `run` executes plans against the real desktop, which needs
          HotkeyAI.Windows. Note this does not pull Core or Engine onto Windows: they remain
          plain net10.0 and keep their Linux CI coverage. The dependency points one way. -->

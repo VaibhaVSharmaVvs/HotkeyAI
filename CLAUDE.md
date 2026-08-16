@@ -169,6 +169,10 @@ dotnet publish src/HotkeyAI.Cli   -c Release -o "$env:LOCALAPPDATA\HotkeyAI\app"
 python tools/schema-checks/check_schema.py schema/hotkeyai-dsl-v1.schema.json
 python tools/schema-checks/validate_examples.py .
 python tools/schema-checks/gen_capabilities.py . --check
+
+# the app icon (only after editing the generator; the .ico is committed because
+# MSBuild's ApplicationIcon needs a file on disk)
+python tools/icon/make_icon.py .
 dotnet build
 dotnet test
 ```

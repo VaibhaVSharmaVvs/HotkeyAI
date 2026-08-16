@@ -1,3 +1,5 @@
+<img src="assets/hotkeyai.png" width="96" align="right" alt="Hotkey AI">
+
 # Hotkey AI
 
 Press a hotkey, run an automation. The automation is a validated JSON plan you can read before

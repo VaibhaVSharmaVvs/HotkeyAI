@@ -1,5 +1,4 @@
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace HotkeyAI.Ui;
@@ -158,62 +157,55 @@ public sealed class TrayIcon : IDisposable
         text.Length <= 127 ? text : text[..124] + "...";
 
     /// <summary>
-    /// Draw the tray icon rather than shipping an .ico.
+    /// The product mark, at whatever size this machine's tray actually wants.
     /// </summary>
     /// <remarks>
-    /// Deliberately generated: a binary asset in the repository is one more thing that cannot be
-    /// reviewed in a diff, and this is a keycap with a letter on it. It is drawn at 32x32 and
-    /// left for the shell to scale.
+    /// Loaded from the embedded .ico rather than drawn, and the size is asked for rather than
+    /// assumed. A multi-size icon lets Windows pick the sub-image that matches the display, so
+    /// this stays crisp at 100%, 150% and 200%; the previous version drew a single 32x32 bitmap
+    /// and left the shell to scale it, which is soft on every display that is not exactly 100%.
+    /// <para>
+    /// The .ico is a committed binary, which is normally worth avoiding — but MSBuild's
+    /// <c>ApplicationIcon</c> needs a file, and the same file being the tray icon is what stops
+    /// the two from drifting apart. The reviewable source is <c>tools/icon/make_icon.py</c>, which
+    /// draws the mark; the binary is its output.
+    /// </para>
     /// </remarks>
     private static Icon BuildIcon()
     {
-        using var bitmap = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bitmap))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+        using var stream = typeof(TrayIcon).Assembly
+            .GetManifestResourceStream("HotkeyAI.Ui.hotkeyai.ico")
+            ?? throw new InvalidOperationException("The tray icon is missing from the assembly.");
 
-            using var body = new SolidBrush(Color.FromArgb(255, 90, 156, 248));
-            using var path = Rounded(new Rectangle(2, 4, 28, 24), 6);
-            g.FillPath(body, path);
+        return new Icon(stream, SystemInformation.SmallIconSize);
+    }
 
-            using var glyph = new SolidBrush(Color.FromArgb(255, 20, 22, 30));
-            using var font = new Font("Segoe UI", 15, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var centre = new StringFormat
-            {
-                Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center,
-            };
-
-            g.DrawString("K", font, glyph, new RectangleF(2, 4, 28, 24), centre);
-        }
-
-        // Icon.FromHandle does not own the underlying handle, so the icon is cloned and the
-        // original destroyed. Skipping this leaks a GDI handle for the life of the process.
-        var handle = bitmap.GetHicon();
-
+    /// <summary>The product mark for a window's title bar and taskbar button.</summary>
+    /// <remarks>
+    /// WPF windows fall back to the icon of the process that owns them, which is right for the
+    /// agent and wrong for anything hosting these windows without one. Handing it over explicitly
+    /// costs a line and removes the question.
+    /// </remarks>
+    internal static System.Windows.Media.Imaging.BitmapFrame? WindowIcon()
+    {
         try
         {
-            using var temporary = Icon.FromHandle(handle);
-            return (Icon)temporary.Clone();
+            using var stream = typeof(TrayIcon).Assembly
+                .GetManifestResourceStream("HotkeyAI.Ui.hotkeyai.ico");
+
+            return stream is null
+                ? null
+                : System.Windows.Media.Imaging.BitmapFrame.Create(
+                    stream,
+                    System.Windows.Media.Imaging.BitmapCreateOptions.None,
+                    System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
         }
-        finally
+#pragma warning disable CA1031 // A missing icon is a cosmetic problem, never a crash.
+        catch (Exception)
+#pragma warning restore CA1031
         {
-            HotkeyAI.Windows.GdiHandle.DestroyIcon(handle);
+            return null;
         }
     }
 
-    private static GraphicsPath Rounded(Rectangle bounds, int radius)
-    {
-        var path = new GraphicsPath();
-        var d = radius * 2;
-
-        path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
-        path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
-        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
-        path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
-        path.CloseFigure();
-
-        return path;
-    }
 }
