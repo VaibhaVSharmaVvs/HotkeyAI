@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Negative bolt — the bolt is cut clean through the key</title>
+  <defs>
+    <linearGradient id="body" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#7DB2FF"/>
+      <stop offset="0.5" stop-color="#4A82F0"/>
+      <stop offset="1" stop-color="#2440C8"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.42"/>
+      <stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="cut">
+      <rect x="0" y="0" width="256" height="256" fill="#FFFFFF"/>
+      <path d="M148 44 L74 148 L120 148 L104 212 L184 104 L136 104 Z"
+            fill="#000000" stroke="#000000" stroke-width="10" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+
+  <!-- One shape, one hole. Nothing sits on top of anything, which is what keeps it clean. -->
+  <rect x="12" y="12" width="232" height="232" rx="60" fill="url(#body)" mask="url(#cut)"/>
+  <rect x="12" y="12" width="232" height="232" rx="60" fill="url(#sheen)" mask="url(#cut)"/>
+</svg>

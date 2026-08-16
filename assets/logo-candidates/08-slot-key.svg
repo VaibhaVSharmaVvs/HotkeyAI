@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Slot key — a key half-pressed into the machine, mid-action</title>
+  <defs>
+    <linearGradient id="deck" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3355D8"/>
+      <stop offset="1" stop-color="#1B2A9E"/>
+    </linearGradient>
+    <linearGradient id="cap8" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#A9CCFF"/>
+      <stop offset="1" stop-color="#5A9CF8"/>
+    </linearGradient>
+    <filter id="cast" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#0A1030" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <!-- The deck the key sits in, cropped by the icon's own edge -->
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#deck)"/>
+  <rect x="8" y="150" width="240" height="98" fill="#16226F" opacity="0.55"/>
+
+  <!-- The keycap, raised and lit -->
+  <g filter="url(#cast)">
+    <rect x="66" y="46" width="124" height="118" rx="30" fill="url(#cap8)"/>
+  </g>
+
+  <path d="M141 66 L100 118 L127 118 L117 146 L158 96 L131 96 Z"
+        fill="#12225E" stroke="#12225E" stroke-width="7" stroke-linejoin="round"/>
+
+  <!-- The slot it presses into: a single confident line, like the player's slider -->
+  <rect x="44" y="186" width="168" height="16" rx="8" fill="#FFFFFF" opacity="0.9"/>
+</svg>

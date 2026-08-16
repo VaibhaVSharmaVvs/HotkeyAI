@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Key and plan — a key above the steps it runs</title>
+  <defs>
+    <linearGradient id="bg" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#5E86FF"/>
+      <stop offset="1" stop-color="#2B3EBF"/>
+    </linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D8E4FF"/>
+    </linearGradient>
+    <filter id="drop" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#101B45" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#bg)"/>
+
+  <!-- The key, raised off the plate the way the player's card is -->
+  <g filter="url(#drop)">
+    <rect x="76" y="34" width="104" height="94" rx="26" fill="url(#cap)"/>
+  </g>
+  <path d="M138 52 L104 96 L127 96 L118 112 L152 82 L129 82 Z"
+        fill="#2B3EBF" stroke="#2B3EBF" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- The plan it fires: three steps, the first one running -->
+  <rect x="52" y="158" width="152" height="16" rx="8" fill="#FFFFFF" opacity="0.95"/>
+  <rect x="52" y="188" width="112" height="16" rx="8" fill="#FFFFFF" opacity="0.6"/>
+  <rect x="52" y="218" width="72"  height="16" rx="8" fill="#FFFFFF" opacity="0.35"/>
+</svg>

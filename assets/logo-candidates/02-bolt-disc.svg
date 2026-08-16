@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Bolt disc — one colour, one shape, Spotify-flat</title>
+  <defs>
+    <linearGradient id="disc" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#6BA5FF"/>
+      <stop offset="1" stop-color="#2F5BE0"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="128" cy="128" r="120" fill="url(#disc)"/>
+
+  <!-- Deliberately oversized. A flat mark has nothing else to carry it, so the glyph has to
+       fill the disc the way Spotify's arcs do. -->
+  <path d="M148 46 L74 148 L120 148 L104 210 L184 104 L136 104 Z"
+        fill="#FFFFFF" stroke="#FFFFFF" stroke-width="12" stroke-linejoin="round"/>
+</svg>

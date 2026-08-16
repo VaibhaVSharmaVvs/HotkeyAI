@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Chord — a modifier held, and the key that fires</title>
+  <defs>
+    <linearGradient id="c-bg" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#243050"/>
+      <stop offset="1" stop-color="#111624"/>
+    </linearGradient>
+    <linearGradient id="c-live" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#9CC6FF"/>
+      <stop offset="1" stop-color="#3B78E0"/>
+    </linearGradient>
+    <filter id="c-lift" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="-6" dy="10" stdDeviation="10" flood-color="#05070F" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#c-bg)"/>
+
+  <!-- Two keys, not three. A third is invisible at 16px and adds nothing at 256. -->
+  <rect x="42" y="58" width="106" height="106" rx="28" fill="#46506E"/>
+
+  <g filter="url(#c-lift)">
+    <rect x="106" y="94" width="112" height="112" rx="30" fill="url(#c-live)"/>
+  </g>
+
+  <path d="M175 112 L136 160 L160 160 L152 188 L190 140 L166 140 Z"
+        fill="#101A34" stroke="#101A34" stroke-width="8" stroke-linejoin="round"/>
+</svg>
