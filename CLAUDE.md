@@ -170,8 +170,9 @@ python tools/schema-checks/check_schema.py schema/hotkeyai-dsl-v1.schema.json
 python tools/schema-checks/validate_examples.py .
 python tools/schema-checks/gen_capabilities.py . --check
 
-# the app icon (only after editing the generator; the .ico is committed because
-# MSBuild's ApplicationIcon needs a file on disk)
+# the app icon. Only when the logo changes: the .ico is committed, because MSBuild's
+# ApplicationIcon needs a file on disk and HotkeyAI.Ui embeds the same file for the tray.
+# Needs headless Chrome to rasterise the SVG — a design-time dependency, never a build one.
 python tools/icon/make_icon.py .
 dotnet build
 dotnet test
