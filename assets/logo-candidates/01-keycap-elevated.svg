@@ -2,31 +2,22 @@
   <title>Keycap, elevated — the whole icon is one key, lit from above</title>
   <defs>
     <linearGradient id="skirt" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3D6FE8"/>
-      <stop offset="1" stop-color="#1E3A8F"/>
+      <stop offset="0" stop-color="#3D6FE8"/><stop offset="1" stop-color="#1E3A8F"/>
     </linearGradient>
     <linearGradient id="face" x1="0.2" y1="0" x2="0.8" y2="1">
-      <stop offset="0" stop-color="#8FC0FF"/>
-      <stop offset="0.55" stop-color="#5A9CF8"/>
+      <stop offset="0" stop-color="#8FC0FF"/><stop offset="0.55" stop-color="#5A9CF8"/>
       <stop offset="1" stop-color="#3B78E0"/>
     </linearGradient>
     <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.5"/>
       <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
     </linearGradient>
     <filter id="lift" x="-40%" y="-40%" width="180%" height="180%">
       <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#0B1428" flood-opacity="0.45"/>
     </filter>
   </defs>
-
-  <!-- Skirt: the key's body, seen slightly from above -->
   <rect x="18" y="22" width="220" height="212" rx="46" fill="url(#skirt)" filter="url(#lift)"/>
-
-  <!-- Face: inset further at the bottom than the top. That asymmetry is what reads as "key" -->
   <rect x="36" y="38" width="184" height="166" rx="34" fill="url(#face)"/>
   <rect x="36" y="38" width="184" height="80" rx="34" fill="url(#gloss)"/>
-
-  <!-- The bolt: what the keypress does -->
-  <path d="M143 62 L86 140 L124 140 L109 196 L172 116 L134 116 Z"
-        fill="#0E1730" stroke="#0E1730" stroke-width="9" stroke-linejoin="round"/>
+  <g transform="translate(18.4 36.8) scale(0.8118)" fill="none" stroke="#0E1730" stroke-width="21.0" stroke-linecap="round" stroke-linejoin="round"><path d="M197.5 107.7 C201.7 112 204.5 118.3 205.5 125.3 C206.6 132.3 205.9 139.9 203.6 146.2 C201.3 152.6 197.4 157.6 192.1 160.1 C186.8 162.6 180 162.6 172.3 160.1 C164.7 157.5 156 152.5 147 146.1 C137.9 139.8 128.4 132.2 119.1 125.2 C109.9 118.2 100.8 111.9 92.5 107.7 C84.1 103.5 76.6 101.5 70.3 102.1 C64 102.8 59 106.2 55.5 111.4 C52.1 116.6 50.2 123.6 50 130.8 C49.8 138 51.3 145.3 54.5 150.8 C57.6 156.4 62.3 160.3 68.3 161.6 C74.3 162.8 81.6 161.4 89.8 157.6 C97.9 153.9 106.9 147.9 116.1 141 C125.3 134.2 134.8 126.6 144 120 C153.1 113.4 161.9 107.9 169.8 104.9 C192.2 96.2 198.8 69.2 220 48"/><path d="M185.2 57.3 L220 48 L210.7 82.8"/></g>
 </svg>
