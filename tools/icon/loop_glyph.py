@@ -35,15 +35,20 @@ A = 82.0
 B = 86.0
 CX, CY = 116.0, 132.0
 
-# Where the arrow crosses the loop's upper right arc, as a value of t. Everything about the
-# arrow follows from this point.
-EXIT_T = 1.73 * math.pi
-
-# How far the shaft runs each side of that crossing. Roughly half in, half out: the arrow has
-# to be visibly inside the loop for piercing to read as piercing.
-INSIDE = 46.0
+# The shaft's tail sits at the middle of the right loop, and the pierce point is then solved
+# rather than chosen: the 45-degree ray from the tail is followed until it meets the curve.
+# Anchoring the tail instead of the exit is what stops the arrow looking like it is grazing
+# the loop's upper edge -- it starts at the loop's centre and leaves through its shoulder, so
+# the loop is unmistakably something the arrow came out of.
+TAIL = 0.50
 OUTSIDE = 70.0
 SHAFT_ANGLE = -45.0
+
+# A sharp head, not a blunt one: a narrow spread over a long barb, which is the proportion a
+# mouse pointer has. Drawn with a mitred join, because a round join literally rounds off the
+# point -- the one part of the arrow that has to be sharp.
+BARB = 54.0
+SPREAD = 18.0
 
 # Stroke removed at each break, in radians of t.
 WEAVE_GAP = 0.17
@@ -84,19 +89,59 @@ def arc(t0, t1):
     return " ".join(parts)
 
 
-def build(barb=40.0, spread=26.0):
-    direction = (math.cos(math.radians(SHAFT_ANGLE)), math.sin(math.radians(SHAFT_ANGLE)))
-    pierce = point(EXIT_T)
+def direction():
+    return math.cos(math.radians(SHAFT_ANGLE)), math.sin(math.radians(SHAFT_ANGLE))
 
-    start = (pierce[0] - direction[0] * INSIDE, pierce[1] - direction[1] * INSIDE)
-    tip = (pierce[0] + direction[0] * OUTSIDE, pierce[1] + direction[1] * OUTSIDE)
+
+def tail():
+    """The shaft's inner end: the middle of the right loop."""
+    return CX + TAIL * A, CY
+
+
+def exit_parameter():
+    """Where the ray from the tail leaves the loop, by bisection.
+
+    The tail is well inside the loop and the ray leaves through the upper right arc, so the
+    signed distance from the ray's line changes exactly once between the crossing and the
+    loop's rightmost point.
+    """
+    d = direction()
+    normal = (-d[1], d[0])
+    origin = tail()
+
+    def side(t):
+        x, y = point(t)
+        return (x - origin[0]) * normal[0] + (y - origin[1]) * normal[1]
+
+    low, high = 1.5 * math.pi, 2 * math.pi
+
+    if side(low) * side(high) > 0:
+        raise ValueError("the shaft never leaves the loop; check TAIL or SHAFT_ANGLE")
+
+    for _ in range(80):
+        mid = (low + high) / 2
+        if side(low) * side(mid) <= 0:
+            high = mid
+        else:
+            low = mid
+
+    return (low + high) / 2
+
+
+def build():
+    d = direction()
+    t_exit = exit_parameter()
+    pierce = point(t_exit)
+
+    start = tail()
+    tip = (pierce[0] + d[0] * OUTSIDE, pierce[1] + d[1] * OUTSIDE)
 
     # A hollow head, as in the reference. It stays sharp when the mark is scaled down, where a
     # filled triangle turns into a lump on the end of a line.
     corners = []
-    for offset in (spread, -spread):
+    for offset in (SPREAD, -SPREAD):
         angle = math.radians(SHAFT_ANGLE + offset)
-        corners.append((tip[0] - math.cos(angle) * barb, tip[1] - math.sin(angle) * barb))
+        corners.append((tip[0] - math.cos(angle) * BARB, tip[1] - math.sin(angle) * BARB))
 
     # The shaft stops at the head's base rather than its tip, so it does not show through the
     # hollow middle.
@@ -104,9 +149,9 @@ def build(barb=40.0, spread=26.0):
 
     return {
         # Left loop, through the woven crossing, up to just before the arrow.
-        "loop_a": arc(math.pi / 2 + WEAVE_GAP, EXIT_T - EXIT_GAP),
+        "loop_a": arc(math.pi / 2 + WEAVE_GAP, t_exit - EXIT_GAP),
         # Past the arrow, round the right and along the bottom, back to the crossing.
-        "loop_b": arc(EXIT_T + EXIT_GAP, 2 * math.pi + math.pi / 2 - WEAVE_GAP),
+        "loop_b": arc(t_exit + EXIT_GAP, 2 * math.pi + math.pi / 2 - WEAVE_GAP),
         "shaft": f"M{fmt(start[0])} {fmt(start[1])} L{fmt(base[0])} {fmt(base[1])}",
         "head": (f"M{fmt(tip[0])} {fmt(tip[1])} L{fmt(corners[0][0])} {fmt(corners[0][1])} "
                  f"L{fmt(corners[1][0])} {fmt(corners[1][1])} Z"),
@@ -123,10 +168,10 @@ def extent():
         ys.append(y)
 
     # The arrow tip is the only part that reaches outside the lemniscate's own box.
-    direction = (math.cos(math.radians(SHAFT_ANGLE)), math.sin(math.radians(SHAFT_ANGLE)))
-    pierce = point(EXIT_T)
-    xs.append(pierce[0] + direction[0] * OUTSIDE)
-    ys.append(pierce[1] + direction[1] * OUTSIDE)
+    d = direction()
+    pierce = point(exit_parameter())
+    xs.append(pierce[0] + d[0] * OUTSIDE)
+    ys.append(pierce[1] + d[1] * OUTSIDE)
 
     return min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
 

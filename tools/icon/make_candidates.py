@@ -20,32 +20,37 @@ MARK = loop_glyph.build()
 GX, GY, GW, GH = loop_glyph.extent()
 
 
-def mark(cx, cy, width, colour, stroke=13.0):
-    """The loop and arrow, centred on (cx, cy) and scaled to `width`.
+def _paint(cx, cy, width, colour, stroke):
+    """The mark, centred on (cx, cy) and scaled to `width`.
 
     `stroke` is in the glyph's own units, so it scales with the mark: a smaller placement
     keeps the same visual weight relative to the shape rather than turning into hairlines.
+
+    The head is a separate group for one reason: it needs a mitred join. Round joins are right
+    everywhere else -- they are what makes the curve look drawn rather than cut -- but on the
+    arrowhead a round join rounds off the point, which is the one part that has to be sharp.
     """
     s = width / GW
     tx = cx - (GX + GW / 2) * s
     ty = cy - (GY + GH / 2) * s
-    return (f'<g transform="translate({tx:.1f} {ty:.1f}) scale({s:.4f})" fill="none" '
-            f'stroke="{colour}" stroke-width="{stroke:.1f}" stroke-linecap="round" '
-            f'stroke-linejoin="round">'
+    place = f'transform="translate({tx:.1f} {ty:.1f}) scale({s:.4f})"'
+    common = (f'fill="none" stroke="{colour}" stroke-width="{stroke:.1f}" '
+              f'stroke-linecap="round"')
+
+    return (f'<g {place} {common} stroke-linejoin="round">'
             f'<path d="{MARK["loop_a"]}"/><path d="{MARK["loop_b"]}"/>'
-            f'<path d="{MARK["shaft"]}"/><path d="{MARK["head"]}"/></g>')
+            f'<path d="{MARK["shaft"]}"/></g>'
+            f'<g {place} {common} stroke-linejoin="miter" stroke-miterlimit="12">'
+            f'<path d="{MARK["head"]}"/></g>')
+
+
+def mark(cx, cy, width, colour, stroke=13.0):
+    return _paint(cx, cy, width, colour, stroke)
 
 
 def cut(cx, cy, width, stroke=17.0):
     """The mark as a hole: the same paths, stroked black inside a mask."""
-    s = width / GW
-    tx = cx - (GX + GW / 2) * s
-    ty = cy - (GY + GH / 2) * s
-    return (f'<g transform="translate({tx:.1f} {ty:.1f}) scale({s:.4f})" fill="none" '
-            f'stroke="#000000" stroke-width="{stroke:.1f}" stroke-linecap="round" '
-            f'stroke-linejoin="round">'
-            f'<path d="{MARK["loop_a"]}"/><path d="{MARK["loop_b"]}"/>'
-            f'<path d="{MARK["shaft"]}"/><path d="{MARK["head"]}"/></g>')
+    return _paint(cx, cy, width, "#000000", stroke)
 
 
 def spark(cx, cy, r, fill="#FFFFFF", opacity=None):
