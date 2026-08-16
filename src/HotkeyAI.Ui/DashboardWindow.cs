@@ -39,6 +39,7 @@ public sealed class DashboardWindow : Window
         this.host = host;
 
         Title = "Hotkey AI";
+        Icon = TrayIcon.WindowIcon();
         Width = 860;
         Height = 700;
         MinWidth = 640;

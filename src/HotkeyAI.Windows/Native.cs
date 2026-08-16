@@ -169,10 +169,6 @@ internal static partial class Native
     [LibraryImport("user32.dll")]
     internal static partial short GetAsyncKeyState(int key);
 
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool DestroyIcon(nint icon);
-
     // ------------------------------- integrity -------------------------------
 
     [LibraryImport("kernel32.dll", SetLastError = true)]

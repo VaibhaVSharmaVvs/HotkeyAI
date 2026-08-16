@@ -24,6 +24,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The same .ico the executables use, embedded so the tray can pick the sub-image that
+         matches the current DPI. Drawing the icon at one size and letting the shell scale it
+         is what made the old tray icon soft on a 150% display. -->
+    <EmbeddedResource Include="..\..\assets\hotkeyai.ico" LogicalName="HotkeyAI.Ui.hotkeyai.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\HotkeyAI.Windows\HotkeyAI.Windows.csproj" />
   </ItemGroup>
 
