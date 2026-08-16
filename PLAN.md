@@ -592,8 +592,43 @@ kept against the automation and pre-fills the box next time.
 
 ### 🎯 Goal 3 — Test, repair, regression suite (≈1.5 weeks)
 
-- ✅ Test-run mode as a first-class feature — timestamped log exactly as the concept sketches,
-  rendered live.
+- ✅ **Done.** Test-run mode as a first-class feature — timestamped log exactly as the concept
+  sketches, rendered live. A `Test run` button on each dashboard row opens a window that executes
+  the automation and shows each step as it happens, ending on the two questions that matter.
+
+  It is a real run against the real desktop, identical to the one the hotkey performs, and it goes
+  through the same single-run gate and the same panic key. A dry run would be safe and useless:
+  the failures worth finding are the ones that only happen against real windows.
+
+  The engine gained an `IRunObserver` for it, with two calls rather than one. An action is logged
+  when it *finishes*, so a plan that waits ten seconds or hangs on a launch would show nothing at
+  all — `Starting` is what lets the window say which step it is stuck on, which is the whole
+  question someone watching has. A watcher cannot influence the run: anything it throws is
+  swallowed, because closing the viewer must not abort the thing being viewed.
+
+  Started steps are a caption rather than a row. Actions nest — a `foreach` is announced before
+  its body and logged after it — so treating "started" as a row to be replaced later would need a
+  stack and would still print a parent's result above its children's. With a caption the list only
+  ever holds finished steps, in exactly the order the transcript holds them, which is the property
+  the repair loop depends on: the run you watched must be the run you complain about.
+
+  Approval is required, and the ordering is deliberate rather than awkward. Approving says "I have
+  read what this does"; testing asks "does it do what I meant". Letting a test run skip the gate
+  would put a dropped file one click from running. Being switched *off* is not a reason to refuse:
+  off means the hotkey does not fire it, and clicking Run here is far more explicit than a
+  keypress. When it cannot run, the button is absent rather than disabled — the reason is always
+  something the row already says, next to the Review button that fixes it.
+
+  Ending on the verdict is the point of building it at all. The moment a user has watched an
+  automation is the moment they can say whether it did what they meant, and `Works` / `Not
+  working` sit right there. Unverified steps are called out in words, and are never painted the
+  same colour as verified ones.
+- ✅ **Fixed while building the above.** The panic key cancelled permanently. One long-lived
+  `CancellationTokenSource` was created at startup and linked into every run, so the first press
+  left its token cancelled forever: every later automation aborted on its first action, while the
+  log reported "panic cleared; hotkeys are live again". Execution now goes through one
+  `AutomationRunner` that owns a token source per run, and pressing panic with nothing running
+  says so instead of arming a trap for the next automation.
 - ✅ **Done.** Repair exporter — the dashboard's Repair button bundles the plan, the execution
   transcript of the run being complained about, what the user says went wrong, and the same rules
   the authoring prompt carries, into one copyable block.
@@ -783,6 +818,14 @@ three decisions that are the user's, not the code's:
 - Multi-monitor behaviour is arithmetically correct and exercised on one display only.
 - The `foreach` + `show_picker` combination has not been run over a list large enough to test the
   overlay's scrolling under real data.
+- `AutomationRunner` — the single-run gate and the per-run panic token — has no automated test.
+  `HotkeyAI.Agent` has no test project, so it is covered only by the live check that fixed it:
+  pressing panic with nothing running, then confirming the next hotkey still ran. The executor's
+  half of the panic key *is* tested, on Linux, via cancellation. Worth moving the token lifecycle
+  into `Engine` and testing it properly before anything else grows on top of it.
+- The dashboard's status line sits below the fold once the list is long enough, so anything said
+  through it can go unread. Test-run mode routes around this by hiding buttons that would refuse
+  rather than by explaining refusals there, but the underlying layout problem is untouched.
 
 ## Risk register
 

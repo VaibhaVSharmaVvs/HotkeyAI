@@ -33,15 +33,39 @@ public sealed partial class PlanExecutor(
     /// <param name="cancellationToken">
     /// Cancelled by the panic key. Cancellation is an abort, not a failure to retry.
     /// </param>
+    public Task<ExecutionResult> RunAsync(
+        Automation automation, CancellationToken cancellationToken = default) =>
+        RunAsync(automation, null, cancellationToken);
+
+    /// <summary>Execute a plan, with something watching it happen.</summary>
+    /// <param name="automation">A plan that has passed schema and policy validation.</param>
+    /// <param name="observer">
+    /// Watcher for test-run mode, told about each step as it starts and finishes. It cannot
+    /// influence the run: anything it throws is swallowed.
+    /// </param>
+    /// <param name="cancellationToken">
+    /// Cancelled by the panic key. Cancellation is an abort, not a failure to retry.
+    /// </param>
+    /// <remarks>
+    /// A separate overload rather than a third optional parameter, because the analyzer requires
+    /// the token last and moving it would silently rewrite the meaning of every existing
+    /// two-argument call. The token is deliberately not optional here, so <c>RunAsync(plan)</c>
+    /// stays unambiguous.
+    /// </remarks>
     public async Task<ExecutionResult> RunAsync(
-        Automation automation, CancellationToken cancellationToken = default)
+        Automation automation,
+        IRunObserver? observer,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(automation);
 
         var run = new RunState(
             new Variables(automation.Variables),
             [],
-            Stopwatch.StartNew());
+            Stopwatch.StartNew())
+        {
+            Observer = observer,
+        };
 
         try
         {
@@ -125,6 +149,12 @@ public sealed partial class PlanExecutor(
         run.Steps++;
 
         var type = Discriminator(action);
+
+        // Announced before it runs, not after. An action is logged when it finishes, so without
+        // this a long wait or a hung launch shows nothing at all on a live view — which is the
+        // one moment someone watching most needs to know what they are waiting for.
+        run.Announce(type, action.Id);
+
         var timeout = action is VerifiableAction { TimeoutMs: { } ms }
             ? TimeSpan.FromMilliseconds(ms)
             : limits.DefaultActionTimeout;
@@ -308,9 +338,14 @@ public sealed partial class PlanExecutor(
         string type,
         StepOutcome outcome,
         Verification verification,
-        string detail) =>
-        run.Entries.Add(new LogEntry(
-            DateTimeOffset.Now, actionId, type, outcome, verification, detail));
+        string detail)
+    {
+        var entry = new LogEntry(
+            DateTimeOffset.Now, actionId, type, outcome, verification, detail);
+
+        run.Entries.Add(entry);
+        run.Publish(entry);
+    }
 
     /// <summary>
     /// Maps each action record to the <c>type</c> the plan actually wrote.
@@ -340,12 +375,46 @@ public sealed partial class PlanExecutor(
 
         public string? FailedActionId { get; private set; }
 
+        public IRunObserver? Observer { get; init; }
+
         public TimeSpan Elapsed => Timer.Elapsed;
 
         public void Stop(string reason, string? actionId)
         {
             StoppedBecause ??= reason;
             FailedActionId ??= actionId;
+        }
+
+        public void Announce(string type, string? actionId) =>
+            Safely(o => o.Starting(type, actionId));
+
+        public void Publish(LogEntry entry) => Safely(o => o.Finished(entry));
+
+        /// <summary>
+        /// Tell the observer something, and never let it affect the run.
+        /// </summary>
+        /// <remarks>
+        /// The observer is a UI in every real case, and a UI can throw for reasons that have
+        /// nothing to do with the automation — a window closed mid-run, a dispatcher shut down.
+        /// Letting that escape would mean closing the test-run window aborted the automation it
+        /// was watching, which is a spectacular way to break something that was working.
+        /// </remarks>
+        private void Safely(Action<IRunObserver> tell)
+        {
+            if (Observer is null)
+            {
+                return;
+            }
+
+            try
+            {
+                tell(Observer);
+            }
+#pragma warning disable CA1031 // Watching must not be able to break running.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
         }
     }
 }
