@@ -20,8 +20,8 @@ internal sealed class InputWindow : OverlayWindow
             Foreground = Palette.Text,
             CaretBrush = Palette.Accent,
             BorderThickness = new Thickness(0),
-            FontSize = 18,
-            Margin = new Thickness(16, 10, 16, 12),
+            FontSize = 19,
+            Margin = new Thickness(20, 4, 20, 16),
         };
 
         entry.PreviewKeyDown += (_, e) =>
@@ -35,25 +35,27 @@ internal sealed class InputWindow : OverlayWindow
 
         var layout = new StackPanel();
 
+        // The prompt is the loudest thing here, not a caption above the field. It is the question
+        // being asked, and an overlay gets about a second to make that question land.
         layout.Children.Add(new TextBlock
         {
             Text = prompt,
-            Foreground = Palette.Muted,
-            FontSize = 12,
+            Foreground = Palette.Text,
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(16, 14, 16, 0),
+            Margin = new Thickness(20, 18, 20, 12),
         });
 
         layout.Children.Add(entry);
         layout.Children.Add(new Border { Height = 1, Background = Palette.Edge });
 
-        layout.Children.Add(new TextBlock
-        {
-            Text = "Enter confirms  ·  Esc cancels",
-            Foreground = Palette.Muted,
-            FontSize = 11,
-            Margin = new Thickness(16, 8, 16, 10),
-        });
+        var hints = Fluent.HintBar(
+            Fluent.KeyHint("Enter", "confirm"),
+            Fluent.KeyHint("Esc", "cancel"));
+
+        hints.Margin = new Thickness(20, 11, 20, 13);
+        layout.Children.Add(hints);
 
         Card.Child = layout;
 

@@ -39,20 +39,33 @@ internal sealed class ToastWindow : Window
         Focusable = false;
         IsHitTestVisible = false;
 
-        var accent = level switch
+        // Warning was the accent blue, which is the colour this app uses for "normal". Now that
+        // the palette has a real amber, a warning looks like one.
+        var (accent, glyph) = level switch
         {
-            NotifyLevel.Error => Palette.Danger,
-            NotifyLevel.Warning => Palette.Accent,
-            _ => Palette.Muted,
+            NotifyLevel.Error => (Palette.Danger, ""),
+            NotifyLevel.Warning => (Palette.Warning, ""),
+            _ => (Palette.Accent, ""),
         };
 
-        var stripe = new Border
+        var stripe = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 0, 12, 0),
+        };
+
+        stripe.Children.Add(new Border
         {
             Width = 3,
             Background = accent,
             CornerRadius = new CornerRadius(2),
-            Margin = new Thickness(0, 0, 10, 0),
-        };
+            Margin = new Thickness(0, 0, 11, 0),
+        });
+
+        // A glyph as well as the stripe. A three-pixel bar of colour is the whole difference
+        // between "done" and "that failed", and colour alone is not a difference everyone can see.
+        stripe.Children.Add(Fluent.Glyph(glyph, 15, accent));
 
         var text = new TextBlock
         {

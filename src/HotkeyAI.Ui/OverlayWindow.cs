@@ -47,22 +47,26 @@ public abstract class OverlayWindow : Window
         // Captured before the window exists, so it is genuinely the window the user was in.
         previousForeground = ForegroundWindow.Current();
 
+        // Deeper radius and a heavier shadow than a dialog gets. An overlay has no title bar and
+        // no frame, so the shadow is the only thing telling the eye it floats above the window
+        // behind it — and being obviously in front is how it earns the second of attention it is
+        // about to take.
         Card = new Border
         {
             Background = Palette.Surface,
             BorderBrush = Palette.Edge,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = new CornerRadius(12),
             Padding = new Thickness(0),
             Effect = new DropShadowEffect
             {
-                BlurRadius = 28,
-                ShadowDepth = 6,
+                BlurRadius = 40,
+                ShadowDepth = 10,
                 Direction = 270,
-                Opacity = 0.5,
+                Opacity = 0.6,
                 Color = Colors.Black,
             },
-            Margin = new Thickness(18),
+            Margin = new Thickness(24),
         };
 
         Content = Card;

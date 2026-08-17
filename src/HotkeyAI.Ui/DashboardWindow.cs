@@ -217,7 +217,11 @@ public sealed class DashboardWindow : Window
 
         var field = Fluent.SearchBox(search, "Search by name or combination");
         field.Margin = new Thickness(24, 0, 0, 0);
-        field.MaxWidth = 340;
+
+        // A fixed width, not a maximum. Left to size itself the field is as wide as whatever is
+        // in it — so it was the width of the placeholder when empty and then snapped in the
+        // moment you typed two characters, which looks like the window flinching.
+        field.Width = 320;
         field.HorizontalAlignment = HorizontalAlignment.Right;
 
         // Filters as you type. A search that waits for Enter is a search people stop using.
@@ -518,28 +522,41 @@ public sealed class DashboardWindow : Window
 
         var live = entry.IsEnabled && !entry.IsLive;
 
-        panel.Children.Add(new TextBlock
-        {
-            Text = live
-                ? $"Not running — {entry.State}"
-                : char.ToUpperInvariant(entry.State[0]) + entry.State[1..],
-            Foreground = live ? Palette.Warning : Palette.Muted,
-            FontSize = 12.5,
-            TextWrapping = TextWrapping.Wrap,
-        });
+        // Text on the left, buttons on the right. Stacked vertically the panel was three rows
+        // taller for no more information, and an expanded row that pushes the next hotkey off
+        // screen makes the list worse than it was before it collapsed.
+        var split = new Grid();
+        split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        split.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        panel.Children.Add(new TextBlock
+        var left = new StackPanel();
+
+        // Only said when it is bad news. "Live" was here in words as well as in the dot, which is
+        // the same fact twice — but a hotkey that is on and *not* running needs its reason, and
+        // the dot can only carry the colour, not the explanation.
+        if (live)
+        {
+            left.Children.Add(new TextBlock
+            {
+                Text = $"Not running — {entry.State}",
+                Foreground = Palette.Warning,
+                FontSize = 12.5,
+                Margin = new Thickness(0, 0, 0, 4),
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
+
+        left.Children.Add(new TextBlock
         {
             Text = entry.LastRun ?? "Not run since the agent started.",
             Foreground = Palette.Muted,
             FontSize = 12.5,
-            Margin = new Thickness(0, 4, 0, 0),
             TextWrapping = TextWrapping.Wrap,
         });
 
         if (entry.HealthNote is { Length: > 0 } note)
         {
-            panel.Children.Add(new TextBlock
+            left.Children.Add(new TextBlock
             {
                 Text = $"You said: {note}",
                 Foreground = Palette.Muted,
@@ -550,30 +567,41 @@ public sealed class DashboardWindow : Window
             });
         }
 
-        // The two halves of "does this actually do what I meant?". Ticking one clears the other;
-        // unticking leaves it untested, which is the honest third state rather than a third box.
-        var verdicts = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Margin = new Thickness(0, 14, 0, 0),
-        };
-
-        verdicts.Children.Add(Fluent.Check(
+        // One box, not two.
+        //
+        // "Not working" used to sit beside this, and its only real job was to unlock Repair —
+        // a label that exists to enable a button is a click tax, and asking someone to formally
+        // declare failure before they are allowed to fix it is backwards. Repair is now offered
+        // unconditionally, and using it is what records that something is broken.
+        //
+        // This one stays, because the value is the *absence* of the tick rather than the tick.
+        // A verdict is bound to the plan's content hash, so editing an automation clears it —
+        // which makes an empty box the answer to the one question nothing else can answer: have
+        // I confirmed this since it last changed? The engine cannot supply that. "Unverified" is
+        // per-action and mechanical; whether it did what you meant is only knowable by you.
+        var works = Fluent.Check(
             "Works", entry.Health == HealthState.Works,
             on => SetVerdict(entry, on ? HealthState.Works : HealthState.Untested),
-            Palette.Good));
+            Palette.Good);
 
-        verdicts.Children.Add(Fluent.Check(
-            "Not working", entry.Health == HealthState.NotWorking,
-            on => SetVerdict(entry, on ? HealthState.NotWorking : HealthState.Untested),
-            Palette.Danger));
+        works.Margin = new Thickness(0, 14, 0, 0);
+        works.ToolTip = entry.Health switch
+        {
+            HealthState.Works => "You have confirmed this does what you meant",
+            HealthState.NotWorking => "You reported this as broken. Tick once it works again.",
+            _ => "Tick once you have watched it do what you meant",
+        };
 
-        panel.Children.Add(verdicts);
+        left.Children.Add(works);
+
+        Grid.SetColumn(left, 0);
+        split.Children.Add(left);
 
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Margin = new Thickness(0, 14, 0, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(12, 0, 0, 0),
         };
 
         if (entry.NeedsApproval)
@@ -583,29 +611,35 @@ public sealed class DashboardWindow : Window
                 "Read the plan and approve it"));
         }
 
-        // Only once it has actually run. Offering repair for an automation with no transcript
-        // produces a prompt whose most useful section says "there is no transcript".
-        if (entry.LastRun is not null)
-        {
-            actions.Children.Add(Fluent.IconButton(
-                Fluent.Repair, "Repair", () => Repair(entry), null,
-                "Build a prompt to get this fixed"));
-        }
+        // On every hotkey now, not only ones that have run. The prompt is weaker without a
+        // transcript and says so, but "it has never worked once" is a repair request too, and
+        // gating the fix behind a run you cannot get is the wrong way round.
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.Repair, "Repair", () => Repair(entry), null,
+            "Build a prompt to get this fixed"));
 
         actions.Children.Add(Fluent.IconButton(
             Fluent.History, "History", () => History(entry), null,
             "Past versions, with a diff against what is on disk"));
 
-        panel.Children.Add(actions);
+        Grid.SetColumn(actions, 1);
+        split.Children.Add(actions);
+
+        panel.Children.Add(split);
         return panel;
     }
 
     /// <summary>
-    /// Record a verdict, and go straight on to repair when it is a bad one.
+    /// Record whether the user says this does what they meant.
     /// </summary>
     /// <remarks>
-    /// The moment a user decides something is broken is the moment they know what is wrong with
-    /// it. Asking later gets a vaguer answer, and a vague complaint makes a worse repair prompt.
+    /// Only ever called with Works or Untested now: reporting something as broken happens in the
+    /// repair dialog, because copying a repair prompt is a clearer statement of "this is broken"
+    /// than a checkbox, and it arrives with the complaint attached.
+    /// <para>
+    /// Clearing the tick drops straight to untested even from a reported fault, which is the
+    /// route back for an automation you no longer want flagged.
+    /// </para>
     /// </remarks>
     private void SetVerdict(DashboardEntry entry, HealthState state)
     {
@@ -614,18 +648,12 @@ public sealed class DashboardWindow : Window
             return;
         }
 
-        host.SetHealth(entry.FileName, state, state == entry.Health ? entry.HealthNote : null);
+        host.SetHealth(entry.FileName, state, state == HealthState.Works ? null : entry.HealthNote);
         Refresh();
-
-        if (state == HealthState.NotWorking)
-        {
-            Repair(entry with { Health = state });
-            return;
-        }
 
         Say(state switch
         {
-            HealthState.Works => $"{entry.Name} marked as working.",
+            HealthState.Works => $"{entry.Name} confirmed working.",
             _ => $"{entry.Name} is untested again.",
         });
     }
@@ -894,13 +922,15 @@ public sealed class DashboardWindow : Window
             {
                 Clipboard.SetText(host.BuildRepairPrompt(entry.FileName, complaint.Text));
 
-                // Keep what they wrote against the automation. It is the same sentence they would
-                // otherwise have to remember and retype the next time they look at this row.
-                if (entry.Health == HealthState.NotWorking && complaint.Text.Trim().Length > 0)
-                {
-                    host.SetHealth(entry.FileName, HealthState.NotWorking, complaint.Text.Trim());
-                    Refresh();
-                }
+                // Copying a repair prompt *is* reporting the automation as broken, so this is
+                // where that gets recorded rather than in a checkbox the user had to tick first.
+                // The complaint is kept with it: it is the same sentence they would otherwise
+                // have to remember and retype the next time they look at this row.
+                host.SetHealth(
+                    entry.FileName, HealthState.NotWorking,
+                    complaint.Text.Trim() is { Length: > 0 } written ? written : entry.HealthNote);
+
+                Refresh();
 
                 said.Text = "Copied. Paste it into Claude Code in the Hotkey AI repository, then "
                     + "bring the corrected JSON back to New hotkey below.";

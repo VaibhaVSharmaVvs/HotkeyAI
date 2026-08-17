@@ -553,6 +553,104 @@ internal static class Fluent
         Margin = new Thickness(0, 10, 0, 10),
     };
 
+    // ----------------------------- overlays -----------------------------
+
+    /// <summary>
+    /// A key drawn as a key, followed by what it does.
+    /// </summary>
+    /// <remarks>
+    /// For the footer of an overlay, where the whole message has to land in about a second.
+    /// "Enter confirms · Esc cancels" as running text makes the reader parse a sentence; the same
+    /// information with the keys drawn as keys is recognised rather than read, and it matches the
+    /// keycaps the dashboard already uses for a chord.
+    /// </remarks>
+    internal static StackPanel KeyHint(string key, string does)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 16, 0),
+        };
+
+        row.Children.Add(new Border
+        {
+            Background = Palette.Selection,
+            BorderBrush = Palette.Edge,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(7, 2, 7, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = key,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 11,
+                Foreground = Palette.Text,
+            },
+        });
+
+        row.Children.Add(new TextBlock
+        {
+            Text = does,
+            Foreground = Palette.Muted,
+            FontSize = 11.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(7, 0, 0, 0),
+        });
+
+        return row;
+    }
+
+    /// <summary>
+    /// An outlined button that takes its colour from what it does.
+    /// </summary>
+    /// <remarks>
+    /// For places where nothing may look like the default — the confirm overlay, where a reflex
+    /// press has to decline. A filled button is a recommendation, and there is no recommendation
+    /// to make when the question is "shall I kill this process".
+    /// </remarks>
+    internal static ControlTemplate OutlineButtonTemplate(Brush ink)
+    {
+        var border = new FrameworkElementFactory(typeof(Border), "bg");
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetValue(Border.BackgroundProperty, Palette.Raised);
+        border.SetValue(Border.BorderBrushProperty, Palette.Edge);
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetBinding(Border.PaddingProperty, Templated(nameof(Control.Padding)));
+
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        border.AppendChild(presenter);
+
+        var template = new ControlTemplate(typeof(ButtonBase)) { VisualTree = border };
+
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BorderBrushProperty, ink, "bg"));
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.RaisedHover, "bg"));
+        template.Triggers.Add(hover);
+
+        var focused = new Trigger { Property = UIElement.IsKeyboardFocusedProperty, Value = true };
+        focused.Setters.Add(new Setter(Border.BorderBrushProperty, ink, "bg"));
+        template.Triggers.Add(focused);
+
+        return template;
+    }
+
+    /// <summary>The strip of key hints along the bottom of an overlay.</summary>
+    internal static StackPanel HintBar(params StackPanel[] hints)
+    {
+        ArgumentNullException.ThrowIfNull(hints);
+
+        var bar = new StackPanel { Orientation = Orientation.Horizontal };
+
+        foreach (var hint in hints)
+        {
+            bar.Children.Add(hint);
+        }
+
+        return bar;
+    }
+
     // ----------------------------- dialogs -----------------------------
 
     /// <summary>
