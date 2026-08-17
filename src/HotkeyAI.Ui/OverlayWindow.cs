@@ -263,6 +263,26 @@ internal static class Palette
 
     public static SolidColorBrush Danger { get; } = Frozen(0xFF, 0xF2, 0x7A, 0x6E);
 
+    /// <summary>A hotkey that is on and actually holding its combination.</summary>
+    public static SolidColorBrush Good { get; } = Frozen(0xFF, 0x4C, 0xC3, 0x8A);
+
+    /// <summary>
+    /// On, but not running.
+    /// </summary>
+    /// <remarks>
+    /// Its own colour rather than green or red, because it is neither. An automation switched on
+    /// whose chord another application already holds is the failure this product is most prone
+    /// to hiding: the user turned it on, the switch says on, and the key does nothing. Painting
+    /// that green would make the dashboard lie in exactly the place it is meant to be trusted.
+    /// </remarks>
+    public static SolidColorBrush Warning { get; } = Frozen(0xFF, 0xE0, 0xA8, 0x4E);
+
+    /// <summary>The card surface a row sits on, one step above the window.</summary>
+    public static SolidColorBrush Raised { get; } = Frozen(0xFF, 0x2A, 0x2A, 0x30);
+
+    /// <summary>The same card under the pointer.</summary>
+    public static SolidColorBrush RaisedHover { get; } = Frozen(0xFF, 0x33, 0x33, 0x3B);
+
     private static SolidColorBrush Frozen(byte a, byte r, byte g, byte b)
     {
         var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
