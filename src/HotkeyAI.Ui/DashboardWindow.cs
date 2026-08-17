@@ -652,59 +652,44 @@ public sealed class DashboardWindow : Window
     /// </remarks>
     private void Review(DashboardEntry entry)
     {
-        var window = new Window
-        {
-            Title = $"Review {entry.Name}",
-            Width = 720,
-            Height = 620,
-            Background = Palette.Surface,
-            Foreground = Palette.Text,
-            FontFamily = new FontFamily("Segoe UI"),
-            Owner = this,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-        };
+        var window = Fluent.Dialog(this, $"Review {entry.Name}", 760, 640);
 
-        var layout = new Grid { Margin = new Thickness(18) };
+        var layout = new Grid { Margin = new Thickness(22) };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var body = new ScrollViewer
+        var top = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
+        top.Children.Add(Fluent.Heading(entry.Name));
+        top.Children.Add(new TextBlock
         {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new TextBlock
-            {
-                Text = entry.Preview,
-                Foreground = Palette.Text,
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-            },
-        };
+            Margin = new Thickness(0, 6, 0, 0),
+            FontSize = 12.5,
+            Foreground = Palette.Muted,
+            TextWrapping = TextWrapping.Wrap,
+            Text = $"{entry.Chord} will run this once approved. Read it first — approval is what "
+                 + "stops a file dropped into the folder from running on a keypress.",
+        });
 
-        Grid.SetRow(body, 0);
+        Grid.SetRow(top, 0);
+        layout.Children.Add(top);
+
+        var body = Fluent.CodePanel(entry.Preview);
+        Grid.SetRow(body, 1);
         layout.Children.Add(body);
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 14, 0, 0),
-        };
+        var buttons = Fluent.Buttons(
+            Fluent.IconButton(Fluent.Cross, "Close", window.Close),
+            Fluent.Primary("I have read this — approve", Fluent.Tick, () =>
+            {
+                host.Approve(entry.FileName);
+                window.Close();
+                Refresh();
+                Say($"{entry.Name} approved.");
+            }));
 
-        buttons.Children.Add(Button("Close", window.Close));
-        buttons.Children.Add(Button("I have read this — approve", () =>
-        {
-            host.Approve(entry.FileName);
-            window.Close();
-            Refresh();
-            Say($"{entry.Name} approved.");
-        }));
-
-        Grid.SetRow(buttons, 1);
+        Grid.SetRow(buttons, 2);
         layout.Children.Add(buttons);
-
-        window.SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
-            new System.Windows.Interop.WindowInteropHelper(window).Handle);
 
         window.Content = layout;
         window.ShowDialog();
@@ -729,35 +714,34 @@ public sealed class DashboardWindow : Window
             return;
         }
 
-        var window = new Window
-        {
-            Title = $"History of {entry.Name}",
-            Width = 520,
-            Height = 460,
-            Background = Palette.Surface,
-            Foreground = Palette.Text,
-            FontFamily = new FontFamily("Segoe UI"),
-            Owner = this,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-        };
-
+        var window = Fluent.Dialog(this, $"History of {entry.Name}", 560, 500);
         var list = new StackPanel();
 
         foreach (var version in history)
         {
+            var caption = new StackPanel { Orientation = Orientation.Horizontal };
+            caption.Children.Add(Fluent.Glyph(
+                version.IsCurrent ? Fluent.Tick : Fluent.History, 13,
+                version.IsCurrent ? Palette.Good : Palette.Muted));
+
+            caption.Children.Add(new TextBlock
+            {
+                Text = version.IsCurrent ? $"{version.Summary}   ·   on disk now" : version.Summary,
+                Margin = new Thickness(10, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 12.5,
+            });
+
             var row = new Button
             {
-                Content = version.IsCurrent ? $"{version.Summary}   ·   on disk now" : version.Summary,
+                Content = caption,
                 Foreground = version.IsCurrent ? Palette.Muted : Palette.Text,
-                Background = Palette.Selection,
-                BorderBrush = Palette.Edge,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(12, 8, 12, 8),
+                Padding = new Thickness(12, 9, 12, 9),
                 Margin = new Thickness(0, 0, 0, 6),
                 HorizontalContentAlignment = HorizontalAlignment.Left,
-                FontSize = 12,
                 Cursor = System.Windows.Input.Cursors.Hand,
                 IsEnabled = !version.IsCurrent,
+                Template = Fluent.ListButtonTemplate(),
             };
 
             var id = version.Id;
@@ -792,26 +776,34 @@ public sealed class DashboardWindow : Window
             list.Children.Add(row);
         }
 
-        var layout = new Grid { Margin = new Thickness(18) };
+        var layout = new Grid { Margin = new Thickness(22) };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var caption = Label("Pick a version to see what restoring it would change.");
-        Grid.SetRow(caption, 0);
-        layout.Children.Add(caption);
+        var top = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        top.Children.Add(Fluent.Heading("Version history"));
+        top.Children.Add(new TextBlock
+        {
+            Text = "Pick a version to see what restoring it would change.",
+            Margin = new Thickness(0, 6, 0, 0),
+            FontSize = 12.5,
+            Foreground = Palette.Muted,
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        Grid.SetRow(top, 0);
+        layout.Children.Add(top);
 
         var scroller = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = list,
-            Margin = new Thickness(0, 8, 0, 0),
         };
 
+        scroller.Resources.Add(typeof(ScrollBar), Fluent.SlimScrollBar());
         Grid.SetRow(scroller, 1);
         layout.Children.Add(scroller);
-
-        window.SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
-            new System.Windows.Interop.WindowInteropHelper(window).Handle);
 
         window.Content = layout;
         window.ShowDialog();
@@ -829,57 +821,59 @@ public sealed class DashboardWindow : Window
     {
         var run = host.LastRun(entry.FileName);
 
-        var window = new Window
-        {
-            Title = $"Repair {entry.Name}",
-            Width = 760,
-            Height = 620,
-            Background = Palette.Surface,
-            Foreground = Palette.Text,
-            FontFamily = new FontFamily("Segoe UI"),
-            Owner = this,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-        };
+        var window = Fluent.Dialog(this, $"Repair {entry.Name}", 780, 660);
 
-        var layout = new Grid { Margin = new Thickness(18) };
+        var layout = new Grid { Margin = new Thickness(22) };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var caption = Label("What did it do, and what should it have done?");
-        Grid.SetRow(caption, 0);
-        layout.Children.Add(caption);
+        var top = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        top.Children.Add(Fluent.Heading("What went wrong?"));
+        top.Children.Add(new TextBlock
+        {
+            Text = "Describe what it did and what it should have done. That sentence, the plan "
+                 + "and the run below all go into the prompt.",
+            Margin = new Thickness(0, 6, 0, 0),
+            FontSize = 12.5,
+            Foreground = Palette.Muted,
+            TextWrapping = TextWrapping.Wrap,
+        });
 
-        var complaint = Field(minLines: 3);
-        complaint.Text = entry.HealthNote ?? "";
+        Grid.SetRow(top, 0);
+        layout.Children.Add(top);
+
+        var complaint = Fluent.Input(new TextBox
+        {
+            Text = entry.HealthNote ?? "",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinLines = 3,
+            MaxLines = 6,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        });
+
         Grid.SetRow(complaint, 1);
         layout.Children.Add(complaint);
 
-        var body = new StackPanel();
+        var body = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
 
         body.Children.Add(new TextBlock
         {
-            Text = run is null ? "It has not run yet." : "The last run:",
+            Text = run is null ? "It has not run yet." : "The last run",
             Foreground = Palette.Muted,
-            FontSize = 11,
-            Margin = new Thickness(0, 12, 0, 4),
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 6),
         });
 
-        body.Children.Add(new ScrollViewer
+        if (run is not null)
         {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Margin = new Thickness(0, 0, 0, 8),
-            MaxHeight = 260,
-            Content = new TextBlock
-            {
-                Text = run?.Transcript ?? "",
-                Foreground = Palette.Muted,
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap,
-            },
-        });
+            var transcript = Fluent.CodePanel(run.Transcript);
+            transcript.MaxHeight = 280;
+            body.Children.Add(transcript);
+        }
 
         Grid.SetRow(body, 2);
         layout.Children.Add(body);
@@ -887,20 +881,14 @@ public sealed class DashboardWindow : Window
         var said = new TextBlock
         {
             Foreground = Palette.Muted,
-            FontSize = 11,
+            FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 8, 0, 0),
-        };
-
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
             Margin = new Thickness(0, 10, 0, 0),
         };
 
-        buttons.Children.Add(Button("Close", window.Close));
-        buttons.Children.Add(Button("Copy repair prompt", () =>
+        var buttons = Fluent.Buttons(
+            Fluent.IconButton(Fluent.Cross, "Close", window.Close),
+            Fluent.Primary("Copy repair prompt", Fluent.Repair, () =>
         {
             try
             {
@@ -915,7 +903,7 @@ public sealed class DashboardWindow : Window
                 }
 
                 said.Text = "Copied. Paste it into Claude Code in the Hotkey AI repository, then "
-                    + "bring the corrected JSON back to New automation below.";
+                    + "bring the corrected JSON back to New hotkey below.";
             }
 #pragma warning disable CA1031 // The clipboard is genuinely flaky; another app can hold it open.
             catch (Exception ex)
@@ -930,9 +918,6 @@ public sealed class DashboardWindow : Window
         footer.Children.Add(said);
         Grid.SetRow(footer, 3);
         layout.Children.Add(footer);
-
-        window.SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
-            new System.Windows.Interop.WindowInteropHelper(window).Handle);
 
         window.Content = layout;
         window.Loaded += (_, _) => complaint.Focus();
@@ -949,17 +934,21 @@ public sealed class DashboardWindow : Window
         panel.Children.Add(Label("Hotkey (optional, e.g. CTRL+ALT+J)"));
         panel.Children.Add(hotkey);
 
-        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        top.Children.Add(Button("Copy prompt for Claude Code", CopyPrompt));
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+        top.Children.Add(Fluent.IconButton(
+            Fluent.Read, "Copy prompt for Claude Code", CopyPrompt, Palette.Accent,
+            "Copy a prompt describing this, with the schema and the rules"));
         panel.Children.Add(top);
 
         panel.Children.Add(Label("Paste the JSON it gives you"));
         panel.Children.Add(pasted);
 
-        var bottom = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        bottom.Children.Add(Button("Check", CheckPasted));
-        bottom.Children.Add(Button("Preview", PreviewPasted));
-        bottom.Children.Add(Button("Save", SavePasted));
+        var bottom = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+        bottom.Children.Add(Fluent.IconButton(Fluent.Tick, "Check", CheckPasted, null,
+            "Validate it without saving"));
+        bottom.Children.Add(Fluent.IconButton(Fluent.Read, "Preview", PreviewPasted, null,
+            "Render it the way Review does"));
+        bottom.Children.Add(Fluent.Primary("Save", Fluent.Add, SavePasted));
         panel.Children.Add(bottom);
 
         // The status line used to live here. It now sits above this panel, where it is visible
@@ -1050,38 +1039,12 @@ public sealed class DashboardWindow : Window
         Margin = new Thickness(0, 8, 0, 4),
     };
 
-    private static TextBox Field(int minLines) => new()
+    private static TextBox Field(int minLines) => Fluent.Input(new TextBox
     {
-        Background = Palette.Selection,
-        Foreground = Palette.Text,
-        CaretBrush = Palette.Accent,
-        BorderBrush = Palette.Edge,
-        BorderThickness = new Thickness(1),
-        Padding = new Thickness(8, 6, 8, 6),
-        FontSize = 13,
         AcceptsReturn = minLines > 1,
         TextWrapping = minLines > 1 ? TextWrapping.Wrap : TextWrapping.NoWrap,
         MinLines = minLines,
         MaxLines = minLines > 1 ? minLines * 2 : 1,
         VerticalScrollBarVisibility = minLines > 1 ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden,
-    };
-
-    private static Button Button(string text, Action onClick)
-    {
-        var button = new Button
-        {
-            Content = text,
-            Foreground = Palette.Text,
-            Background = Palette.Edge,
-            BorderBrush = Palette.Edge,
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(12, 5, 12, 5),
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 12,
-            Cursor = System.Windows.Input.Cursors.Hand,
-        };
-
-        button.Click += (_, _) => onClick();
-        return button;
-    }
+    });
 }

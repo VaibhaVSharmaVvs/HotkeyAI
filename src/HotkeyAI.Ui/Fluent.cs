@@ -159,6 +159,11 @@ internal static class Fluent
             Template = FlatButtonTemplate(),
         };
 
+        // Named explicitly. WPF derives a button's accessible name from its content, and this
+        // one's content is a panel — so without this the button reaches a screen reader, and UI
+        // Automation generally, as an unnamed control.
+        System.Windows.Automation.AutomationProperties.SetName(button, text);
+
         button.Click += (_, _) => onClick();
         return button;
     }
@@ -490,6 +495,38 @@ internal static class Fluent
         return template;
     }
 
+    /// <summary>A full-width row in a list: a card that lights up under the pointer.</summary>
+    internal static ControlTemplate ListButtonTemplate()
+    {
+        var border = new FrameworkElementFactory(typeof(Border), "row");
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetValue(Border.BackgroundProperty, Palette.Raised);
+        border.SetValue(Border.BorderBrushProperty, Palette.Edge);
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetBinding(Border.PaddingProperty, Templated(nameof(Control.Padding)));
+
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+        border.AppendChild(presenter);
+
+        var template = new ControlTemplate(typeof(ButtonBase)) { VisualTree = border };
+
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, RaisedHoverBrush, "row"));
+        hover.Setters.Add(new Setter(Border.BorderBrushProperty, Palette.Accent, "row"));
+        template.Triggers.Add(hover);
+
+        // Dimmed rather than hidden: the version already on disk still belongs in the list, it
+        // just has nothing to restore.
+        var off = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+        off.Setters.Add(new Setter(UIElement.OpacityProperty, 0.55, "row"));
+        template.Triggers.Add(off);
+
+        return template;
+    }
+
+    private static Brush RaisedHoverBrush => Palette.RaisedHover;
+
     /// <summary>Chrome for a header that highlights on hover and holds whatever it is given.</summary>
     private static ControlTemplate HeaderChromeTemplate()
     {
@@ -597,6 +634,9 @@ internal static class Fluent
             Cursor = Cursors.Hand,
             Template = FilledButtonTemplate(),
         };
+
+        // See IconButton: panel content leaves the button nameless without this.
+        System.Windows.Automation.AutomationProperties.SetName(button, text);
 
         button.Click += (_, _) => onClick();
         return button;
