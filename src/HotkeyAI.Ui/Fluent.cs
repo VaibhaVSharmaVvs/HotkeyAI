@@ -297,6 +297,83 @@ internal static class Fluent
         return host;
     }
 
+    /// <summary>
+    /// A checkbox dark enough to sit next to the rest of this window.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="ink"/> is the colour it takes when ticked, so the two verdicts can be
+    /// green and red rather than both being the accent. Driven by Checked and Unchecked for the
+    /// same UI Automation reason as <see cref="Switch"/>.
+    /// </remarks>
+    internal static CheckBox Check(string text, bool on, Action<bool> changed, Brush ink)
+    {
+        var box = new CheckBox
+        {
+            IsChecked = on,
+            Content = text,
+            Foreground = on ? ink : Palette.Muted,
+            FontSize = 12.5,
+            Cursor = Cursors.Hand,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 18, 0),
+            Template = CheckTemplate(ink),
+        };
+
+        box.Checked += (_, _) => changed(true);
+        box.Unchecked += (_, _) => changed(false);
+        return box;
+    }
+
+    private static ControlTemplate CheckTemplate(Brush ink)
+    {
+        var row = new FrameworkElementFactory(typeof(StackPanel));
+        row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+
+        var box = new FrameworkElementFactory(typeof(Border), "box");
+        box.SetValue(FrameworkElement.WidthProperty, 18.0);
+        box.SetValue(FrameworkElement.HeightProperty, 18.0);
+        box.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+        box.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        box.SetValue(Border.BorderBrushProperty, Palette.Muted);
+        box.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        box.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+
+        var tick = new FrameworkElementFactory(typeof(TextBlock), "tick");
+        tick.SetValue(TextBlock.TextProperty, Tick);
+        tick.SetValue(TextBlock.FontFamilyProperty, IconFont);
+        tick.SetValue(TextBlock.FontSizeProperty, 10.0);
+        tick.SetValue(TextBlock.ForegroundProperty, Palette.Surface);
+        tick.SetValue(UIElement.OpacityProperty, 0.0);
+        tick.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        tick.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        box.AppendChild(tick);
+        row.AppendChild(box);
+
+        var label = new FrameworkElementFactory(typeof(ContentPresenter));
+        label.SetValue(FrameworkElement.MarginProperty, new Thickness(8, 0, 0, 0));
+        label.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        row.AppendChild(label);
+
+        var template = new ControlTemplate(typeof(CheckBox)) { VisualTree = row };
+
+        var on = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
+        on.Setters.Add(new Setter(Border.BackgroundProperty, ink, "box"));
+        on.Setters.Add(new Setter(Border.BorderBrushProperty, ink, "box"));
+        on.Setters.Add(new Setter(UIElement.OpacityProperty, 1.0, "tick"));
+        template.Triggers.Add(on);
+
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BorderBrushProperty, ink, "box"));
+        template.Triggers.Add(hover);
+
+        var focused = new Trigger { Property = UIElement.IsKeyboardFocusedProperty, Value = true };
+        focused.Setters.Add(new Setter(Border.BorderBrushProperty, Palette.Accent, "box"));
+        focused.Setters.Add(new Setter(Border.BorderThicknessProperty, new Thickness(2), "box"));
+        template.Triggers.Add(focused);
+
+        return template;
+    }
+
     /// <summary>A card: the surface every row and panel sits on.</summary>
     internal static Border Card(UIElement child, double radius = 8) => new()
     {
@@ -306,6 +383,130 @@ internal static class Fluent
         CornerRadius = new CornerRadius(radius),
         Child = child,
     };
+
+    /// <summary>
+    /// A slim, dark scrollbar with no arrow buttons.
+    /// </summary>
+    /// <remarks>
+    /// WPF's stock ScrollBar is a light-theme control with a raised thumb and a stepper at each
+    /// end. It is the one piece of chrome in the dashboard that cannot be recoloured through
+    /// properties, so it has to be rebuilt: without this, a window that is otherwise entirely
+    /// dark grows a strip of Windows 7 down its right edge the moment the list overflows.
+    /// </remarks>
+    /// <remarks>
+    /// Parsed from markup rather than assembled with <see cref="FrameworkElementFactory"/> like
+    /// everything else here, because a scrollbar needs a <c>Track</c> and a Track takes its
+    /// Thumb through a plain CLR property rather than a dependency property — there is nothing
+    /// for the factory to set. The markup is a constant, so it either parses on the first open
+    /// or never.
+    /// </remarks>
+    internal static Style SlimScrollBar()
+    {
+        var idle = Palette.Edge.Color.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var hot = Palette.Muted.Color.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        var markup =
+            "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' " +
+            "xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='ScrollBar'>" +
+            "<Setter Property='Width' Value='10'/>" +
+            "<Setter Property='Background' Value='Transparent'/>" +
+            "<Setter Property='Template'><Setter.Value>" +
+            "<ControlTemplate TargetType='ScrollBar'><Border Background='Transparent'>" +
+            // Track alone: no RepeatButtons, so no stepper arrows and no grey gutter.
+            "<Track x:Name='PART_Track' IsDirectionReversed='True'><Track.Thumb><Thumb>" +
+            "<Thumb.Template><ControlTemplate TargetType='Thumb'>" +
+            $"<Border x:Name='bar' Background='{idle}' CornerRadius='3' Margin='3,0,3,0'/>" +
+            "<ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'>" +
+            $"<Setter TargetName='bar' Property='Background' Value='{hot}'/>" +
+            "</Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template>" +
+            "</Thumb></Track.Thumb></Track></Border></ControlTemplate>" +
+            "</Setter.Value></Setter></Style>";
+
+        return (Style)System.Windows.Markup.XamlReader.Parse(markup);
+    }
+
+    /// <summary>
+    /// An expander whose header is a glyph and a word, not a circled arrow.
+    /// </summary>
+    /// <remarks>
+    /// WPF draws its expander toggle as a white circle with a chevron in it, which is the one
+    /// light-theme artefact left in an otherwise dark window.
+    /// </remarks>
+    internal static ControlTemplate ExpanderTemplate(string glyph)
+    {
+        var stack = new FrameworkElementFactory(typeof(StackPanel));
+
+        // The glyph and the caption are built here, inside the Expander's own template, so that
+        // TemplatedParent resolves to the Expander. Built inside the ToggleButton's template
+        // instead, it resolves to the button — which has no Header, so the caption silently
+        // renders as nothing and the expander becomes a lone plus sign.
+        var row = new FrameworkElementFactory(typeof(StackPanel));
+        row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+
+        var icon = new FrameworkElementFactory(typeof(TextBlock));
+        icon.SetValue(TextBlock.TextProperty, glyph);
+        icon.SetValue(TextBlock.FontFamilyProperty, IconFont);
+        icon.SetValue(TextBlock.FontSizeProperty, 13.0);
+        icon.SetValue(TextBlock.ForegroundProperty, Palette.Accent);
+        icon.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        row.AppendChild(icon);
+
+        var caption = new FrameworkElementFactory(typeof(TextBlock));
+        caption.SetBinding(TextBlock.TextProperty,
+            new System.Windows.Data.Binding(nameof(Expander.Header))
+            {
+                RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent,
+            });
+        caption.SetValue(FrameworkElement.MarginProperty, new Thickness(9, 0, 0, 0));
+        caption.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        caption.SetValue(TextBlock.ForegroundProperty, Palette.Text);
+        caption.SetValue(TextBlock.FontSizeProperty, 13.0);
+        row.AppendChild(caption);
+
+        var header = new FrameworkElementFactory(typeof(ToggleButton), "toggle");
+        header.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+        header.SetValue(FrameworkElement.CursorProperty, Cursors.Hand);
+        header.SetBinding(ToggleButton.IsCheckedProperty,
+            new System.Windows.Data.Binding(nameof(Expander.IsExpanded))
+            {
+                RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent,
+                Mode = System.Windows.Data.BindingMode.TwoWay,
+            });
+
+        header.AppendChild(row);
+        header.SetValue(Control.TemplateProperty, HeaderChromeTemplate());
+        stack.AppendChild(header);
+
+        var content = new FrameworkElementFactory(typeof(ContentPresenter), "content");
+        content.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+        content.SetValue(FrameworkElement.MarginProperty, new Thickness(2, 8, 2, 0));
+        stack.AppendChild(content);
+
+        var template = new ControlTemplate(typeof(Expander)) { VisualTree = stack };
+        var open = new Trigger { Property = Expander.IsExpandedProperty, Value = true };
+        open.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "content"));
+        template.Triggers.Add(open);
+
+        return template;
+    }
+
+    /// <summary>Chrome for a header that highlights on hover and holds whatever it is given.</summary>
+    private static ControlTemplate HeaderChromeTemplate()
+    {
+        var border = new FrameworkElementFactory(typeof(Border), "hb");
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        border.SetValue(Border.PaddingProperty, new Thickness(10, 7, 12, 7));
+        border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+
+        var template = new ControlTemplate(typeof(ToggleButton)) { VisualTree = border };
+
+        var over = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        over.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Raised, "hb"));
+        template.Triggers.Add(over);
+
+        return template;
+    }
 
     /// <summary>A hairline, for separating an expanded panel from its row.</summary>
     internal static Border Divider() => new()

@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
-using System.Windows.Shapes;
+using HotkeyAI.Core.Matching;
 
 namespace HotkeyAI.Ui;
 
@@ -29,7 +29,19 @@ public sealed class DashboardWindow : Window
         Margin = new Thickness(0, 8, 0, 0),
     };
 
-    private CheckBox autostart = new();
+    private readonly TextBox search = new();
+
+    /// <summary>
+    /// Which rows are open, by file name.
+    /// </summary>
+    /// <remarks>
+    /// Kept on the window rather than on the row, because every refresh rebuilds the list from
+    /// scratch. Without this, approving an automation — or a run finishing — would snap every
+    /// open row shut underneath whoever was reading it.
+    /// </remarks>
+    private readonly HashSet<string> expanded = new(StringComparer.OrdinalIgnoreCase);
+
+    private ToggleButton autostart = new();
 
     /// <summary>Set while the window writes to its own controls, to stop re-entry.</summary>
     private bool refreshing;
@@ -53,6 +65,7 @@ public sealed class DashboardWindow : Window
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var header = Header();
         Grid.SetRow(header, 0);
@@ -63,24 +76,36 @@ public sealed class DashboardWindow : Window
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = list,
-            Margin = new Thickness(0, 12, 0, 12),
+            Margin = new Thickness(0, 4, 0, 8),
         };
+
+        // WPF's stock scrollbar is a light-theme control with arrow buttons at both ends, and it
+        // is the one piece of chrome in this window that cannot be recoloured through properties.
+        scroller.Resources.Add(typeof(ScrollBar), Fluent.SlimScrollBar());
 
         Grid.SetRow(scroller, 1);
         layout.Children.Add(scroller);
+
+        // Its own row, above the authoring panel rather than inside it. Everything this window
+        // says back to you arrived here — and while it lived inside a collapsed expander at the
+        // bottom of a full list, every one of those messages was scrolled out of sight.
+        Grid.SetRow(status, 2);
+        layout.Children.Add(status);
 
         // Collapsed by default. The list is what this window is for; authoring is something you
         // do occasionally, and giving it a third of the height permanently would leave eight
         // automations sharing a box three rows tall.
         var authoring = new Expander
         {
-            Header = "New automation",
+            Header = "New hotkey",
             Foreground = Palette.Text,
+            FontSize = 13,
             IsExpanded = false,
             Content = Authoring(),
+            Template = Fluent.ExpanderTemplate(Fluent.Add),
         };
 
-        Grid.SetRow(authoring, 2);
+        Grid.SetRow(authoring, 3);
         layout.Children.Add(authoring);
 
         Content = layout;
@@ -132,18 +157,24 @@ public sealed class DashboardWindow : Window
         list.Children.Clear();
 
         var entries = host.Load();
+        var query = search.Text;
+
+        var shown = entries
+            .Where(e => HotkeySearch.Matches(e.Name, e.Chord, query))
+            .ToList();
 
         if (entries.Count == 0)
         {
-            list.Children.Add(new TextBlock
-            {
-                Text = "No automations yet. Describe one below to get started.",
-                Foreground = Palette.Muted,
-                Margin = new Thickness(4, 12, 4, 12),
-            });
+            list.Children.Add(Empty("No hotkeys yet. Add one below to get started."));
+        }
+        else if (shown.Count == 0)
+        {
+            // Said differently from "none exist", because the two look identical on screen and
+            // mean completely different things.
+            list.Children.Add(Empty($"Nothing matches “{query.Trim()}”."));
         }
 
-        foreach (var entry in entries)
+        foreach (var entry in shown)
         {
             list.Children.Add(Row(entry));
         }
@@ -153,125 +184,298 @@ public sealed class DashboardWindow : Window
         refreshing = false;
     }
 
-    private Grid Header()
+    private static TextBlock Empty(string message) => new()
     {
-        var row = new Grid();
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Text = message,
+        Foreground = Palette.Muted,
+        FontSize = 13,
+        Margin = new Thickness(4, 18, 4, 18),
+        HorizontalAlignment = HorizontalAlignment.Center,
+    };
+
+    private StackPanel Header()
+    {
+        var stack = new StackPanel();
+
+        // Title and search on one line, the way a settings window opens: what this is, and the
+        // fastest way to reach one thing in it.
+        var top = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var title = new TextBlock
         {
-            Text = "Automations",
-            FontSize = 20,
+            Text = "Hotkeys",
+            FontSize = 26,
+            FontWeight = FontWeights.SemiBold,
             Foreground = Palette.Text,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
         Grid.SetColumn(title, 0);
-        row.Children.Add(title);
+        top.Children.Add(title);
 
-        autostart = new CheckBox
+        var field = Fluent.SearchBox(search, "Search by name or combination");
+        field.Margin = new Thickness(24, 0, 0, 0);
+        field.MaxWidth = 340;
+        field.HorizontalAlignment = HorizontalAlignment.Right;
+
+        // Filters as you type. A search that waits for Enter is a search people stop using.
+        search.TextChanged += (_, _) =>
         {
-            Content = "Start at login",
-            Foreground = Palette.Text,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 12, 0),
+            if (!refreshing)
+            {
+                Refresh();
+            }
         };
 
-        void AutostartChanged(object sender, RoutedEventArgs e)
+        search.PreviewKeyDown += (_, e) =>
         {
-            if (refreshing)
+            if (e.Key == System.Windows.Input.Key.Escape && search.Text.Length > 0)
             {
-                return;
+                search.Clear();
+                e.Handled = true;
             }
+        };
 
-            host.AutostartEnabled = autostart.IsChecked == true;
+        Grid.SetColumn(field, 1);
+        top.Children.Add(field);
+        stack.Children.Add(top);
 
-            // Read back rather than trusting the tick: enabling can fail, and a checkbox that
-            // stays on after a failed write is a lie about whether this starts at login.
-            refreshing = true;
-            autostart.IsChecked = host.AutostartEnabled;
-            refreshing = false;
+        // Toolbar: the three things you do to the whole list, and the one setting that belongs
+        // to the app rather than to any hotkey.
+        var bar = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            Say(autostart.IsChecked == true
-                ? "Hotkey AI will start when you sign in."
-                : "Hotkey AI will not start automatically.");
-        }
+        var actions = new StackPanel { Orientation = Orientation.Horizontal };
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.Refresh, "Reload", () => { host.Reload(); Refresh(); Say("Reloaded."); },
+            tooltip: "Re-read the folder and rebind every hotkey"));
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.Folder, "Folder", host.OpenAutomationsFolder,
+            tooltip: "Open the automations folder"));
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.Document, "Log", host.OpenLog, tooltip: "Open today's log"));
 
-        autostart.Checked += AutostartChanged;
-        autostart.Unchecked += AutostartChanged;
+        Grid.SetColumn(actions, 0);
+        bar.Children.Add(actions);
 
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-        buttons.Children.Add(autostart);
-        buttons.Children.Add(Button("Reload", () => { host.Reload(); Refresh(); Say("Reloaded."); }));
-        buttons.Children.Add(Button("Folder", host.OpenAutomationsFolder));
-        buttons.Children.Add(Button("Log", host.OpenLog));
+        autostart = Fluent.Switch(false, OnAutostart, "Start Hotkey AI when you sign in");
 
-        Grid.SetColumn(buttons, 1);
-        row.Children.Add(buttons);
+        var login = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
-        return row;
+        login.Children.Add(new TextBlock
+        {
+            Text = "Start at login",
+            Foreground = Palette.Muted,
+            FontSize = 12.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0),
+        });
+
+        login.Children.Add(autostart);
+
+        Grid.SetColumn(login, 1);
+        bar.Children.Add(login);
+        stack.Children.Add(bar);
+
+        return stack;
     }
 
+    private void OnAutostart(bool wanted)
+    {
+        if (refreshing)
+        {
+            return;
+        }
+
+        host.AutostartEnabled = wanted;
+
+        // Read back rather than trusting the switch: enabling can fail, and a control that stays
+        // on after a failed write is a lie about whether this starts at login.
+        refreshing = true;
+        autostart.IsChecked = host.AutostartEnabled;
+        refreshing = false;
+
+        Say(autostart.IsChecked == true
+            ? "Hotkey AI will start when you sign in."
+            : "Hotkey AI will not start automatically.");
+    }
+
+    /// <summary>
+    /// One hotkey: a summary you can scan, and everything else behind a chevron.
+    /// </summary>
+    /// <remarks>
+    /// Collapsed, a row answers only the questions worth asking about every hotkey at once — is
+    /// it on, what fires it, does it work. Ten rows of buttons is not a list you scan, it is a
+    /// wall you read, and the buttons that matter are always the ones belonging to the single
+    /// automation you came here about. Everything else is one click away.
+    /// </remarks>
     private Border Row(DashboardEntry entry)
     {
-        var card = new Border
+        var open = expanded.Contains(entry.FileName);
+
+        var body = new StackPanel();
+        var card = Fluent.Card(body);
+        card.Margin = new Thickness(0, 0, 0, 6);
+
+        var head = new Grid { Margin = new Thickness(14, 11, 12, 11) };
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        // Green when it is on and holding its combination, amber when it is on and not, red when
+        // it is off. Amber is the one that earns its keep: "switched on, but another application
+        // owns this chord" is exactly the state a green dot would hide, and it is the failure
+        // this product is most prone to hiding.
+        var (colour, why) = entry switch
         {
-            Background = Palette.Selection,
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(14, 10, 14, 10),
-            Margin = new Thickness(0, 0, 0, 8),
+            { IsEnabled: false } => (Palette.Danger, "Off"),
+            { IsLive: true } => (Palette.Good, "On, and running"),
+            _ => (Palette.Warning, $"On, but not running — {entry.State}"),
         };
 
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        // A dot rather than a word: whether something is live is the one thing the user scans for.
-        var dot = new Ellipse
-        {
-            Width = 9,
-            Height = 9,
-            Margin = new Thickness(0, 0, 12, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Fill = entry.IsLive ? Palette.Accent : Palette.Muted,
-        };
-
+        var dot = Fluent.Dot(colour);
+        dot.Margin = new Thickness(0, 0, 12, 0);
+        dot.ToolTip = why;
         Grid.SetColumn(dot, 0);
-        grid.Children.Add(dot);
+        head.Children.Add(dot);
 
-        var text = new StackPanel();
-        text.Children.Add(new TextBlock
+        var naming = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        naming.Children.Add(new TextBlock
         {
             Text = entry.Name,
             Foreground = Palette.Text,
             FontSize = 14,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
         });
 
-        var detail = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Margin = new Thickness(0, 3, 0, 0),
-        };
+        naming.Children.Add(Keycap(entry));
+        Grid.SetColumn(naming, 1);
+        head.Children.Add(naming);
 
-        // The chord is the control that changes it. Putting rebinding behind a separate button
-        // labelled something else would leave the most obvious thing on the row inert.
-        var rebind = new Button
+        // The verdict as one character. A row nobody has judged yet shows nothing rather than a
+        // third symbol, because "untested" is the absence of an answer, not another answer.
+        if (entry.Health != HealthState.Untested)
         {
-            Content = entry.Chord,
-            Foreground = Palette.Text,
-            Background = Palette.Edge,
-            BorderBrush = Palette.Edge,
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(8, 2, 8, 2),
-            FontSize = 11,
+            var works = entry.Health == HealthState.Works;
+            var verdict = Fluent.Glyph(
+                works ? Fluent.Tick : Fluent.Cross, 13,
+                works ? Palette.Good : Palette.Danger);
+
+            verdict.Margin = new Thickness(10, 0, 6, 0);
+            verdict.ToolTip = entry.HealthNote is { Length: > 0 } note
+                ? $"{(works ? "Works" : "Not working")} — {note}"
+                : works ? "You marked this as working" : "You marked this as not working";
+
+            Grid.SetColumn(verdict, 2);
+            head.Children.Add(verdict);
+        }
+
+        var toggle = Fluent.Switch(
+            entry.IsEnabled,
+            on => Toggle(entry, on),
+            entry.IsEnabled
+                ? "On — pressing the combination runs it"
+                : "Off — the combination does nothing");
+
+        toggle.Margin = new Thickness(8, 0, 4, 0);
+        Grid.SetColumn(toggle, 3);
+        head.Children.Add(toggle);
+
+        var chevron = Fluent.Glyph(Fluent.ChevronDown, 12, Palette.Muted);
+        chevron.Margin = new Thickness(10, 0, 2, 0);
+        chevron.RenderTransformOrigin = new Point(0.5, 0.5);
+        chevron.RenderTransform = new RotateTransform(open ? 180 : 0);
+        Grid.SetColumn(chevron, 4);
+        head.Children.Add(chevron);
+
+        var header = new Border
+        {
+            Background = Brushes.Transparent,
             Cursor = System.Windows.Input.Cursors.Hand,
-            ToolTip = "Change this hotkey",
+            Child = head,
         };
 
-        rebind.Click += (_, _) =>
+        header.MouseEnter += (_, _) => card.Background = Palette.RaisedHover;
+        header.MouseLeave += (_, _) => card.Background = Palette.Raised;
+
+        // The whole strip opens the row. A chevron you have to hit exactly is a target the size
+        // of a full stop. The switch and the keycap are buttons, and buttons mark their own
+        // clicks handled, so they still do their own jobs rather than expanding the row.
+        header.MouseLeftButtonUp += (_, _) => SetExpanded(entry.FileName, !open);
+
+        System.Windows.Automation.AutomationProperties.SetName(
+            header, $"{entry.Name}, {entry.Chord}. {why}.");
+
+        body.Children.Add(header);
+
+        if (open)
         {
+            body.Children.Add(Details(entry));
+        }
+
+        return card;
+    }
+
+    private void SetExpanded(string fileName, bool open)
+    {
+        if (open)
+        {
+            expanded.Add(fileName);
+        }
+        else
+        {
+            expanded.Remove(fileName);
+        }
+
+        Refresh();
+    }
+
+    /// <summary>
+    /// The combination, drawn as the key it is — and the button that rebinds it.
+    /// </summary>
+    /// <remarks>
+    /// The chord is the control that changes it. Putting rebinding behind a separate button
+    /// labelled something else would leave the most obvious thing on the row inert.
+    /// </remarks>
+    private Button Keycap(DashboardEntry entry)
+    {
+        var cap = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = entry.Chord,
+                FontSize = 11.5,
+                FontFamily = new FontFamily("Consolas"),
+                Foreground = Palette.Text,
+            },
+            Padding = new Thickness(9, 3, 9, 3),
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = "Change this combination",
+            Template = KeycapTemplate(),
+        };
+
+        cap.Click += (_, e) =>
+        {
+            // Handled, so pressing the keycap rebinds instead of also opening the row.
+            e.Handled = true;
+
             if (HotkeyCaptureWindow.Show(this, host, entry.FileName, entry.Name, entry.Chord))
             {
                 Refresh();
@@ -279,92 +483,151 @@ public sealed class DashboardWindow : Window
             }
         };
 
-        detail.Children.Add(rebind);
+        return cap;
+    }
 
-        detail.Children.Add(new TextBlock
-        {
-            Text = entry.Health switch
+    private static ControlTemplate KeycapTemplate()
+    {
+        var border = new FrameworkElementFactory(typeof(Border), "cap");
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(5));
+        border.SetValue(Border.BackgroundProperty, Palette.Selection);
+        border.SetValue(Border.BorderBrushProperty, Palette.Edge);
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetBinding(Border.PaddingProperty,
+            new System.Windows.Data.Binding(nameof(Control.Padding))
             {
-                HealthState.Works => "  ✓ works",
-                HealthState.NotWorking => "  ✗ not working",
-                _ => "  · not tested",
-            },
-            Foreground = entry.Health switch
-            {
-                HealthState.Works => Palette.Accent,
-                HealthState.NotWorking => Palette.Danger,
-                _ => Palette.Muted,
-            },
-            FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
-            ToolTip = entry.HealthNote,
-        });
+                RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent,
+            });
 
-        detail.Children.Add(new TextBlock
+        border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+
+        var template = new ControlTemplate(typeof(Button)) { VisualTree = border };
+
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BorderBrushProperty, Palette.Accent, "cap"));
+        template.Triggers.Add(hover);
+
+        return template;
+    }
+
+    /// <summary>Everything about one hotkey that is not worth showing for all of them.</summary>
+    private StackPanel Details(DashboardEntry entry)
+    {
+        var panel = new StackPanel { Margin = new Thickness(35, 0, 14, 14) };
+        panel.Children.Add(Fluent.Divider());
+
+        var live = entry.IsEnabled && !entry.IsLive;
+
+        panel.Children.Add(new TextBlock
         {
-            Text = entry.LastRun is null ? entry.State : $"{entry.State}   ·   {entry.LastRun}",
-            Foreground = entry.IsLive ? Palette.Muted : Palette.Danger,
-            FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
+            Text = live
+                ? $"Not running — {entry.State}"
+                : char.ToUpperInvariant(entry.State[0]) + entry.State[1..],
+            Foreground = live ? Palette.Warning : Palette.Muted,
+            FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap,
         });
 
-        text.Children.Add(detail);
+        panel.Children.Add(new TextBlock
+        {
+            Text = entry.LastRun ?? "Not run since the agent started.",
+            Foreground = Palette.Muted,
+            FontSize = 12.5,
+            Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+        });
 
-        Grid.SetColumn(text, 1);
-        grid.Children.Add(text);
+        if (entry.HealthNote is { Length: > 0 } note)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"You said: {note}",
+                Foreground = Palette.Muted,
+                FontSize = 12.5,
+                FontStyle = FontStyles.Italic,
+                Margin = new Thickness(0, 4, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
+
+        // The two halves of "does this actually do what I meant?". Ticking one clears the other;
+        // unticking leaves it untested, which is the honest third state rather than a third box.
+        var verdicts = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 14, 0, 0),
+        };
+
+        verdicts.Children.Add(Fluent.Check(
+            "Works", entry.Health == HealthState.Works,
+            on => SetVerdict(entry, on ? HealthState.Works : HealthState.Untested),
+            Palette.Good));
+
+        verdicts.Children.Add(Fluent.Check(
+            "Not working", entry.Health == HealthState.NotWorking,
+            on => SetVerdict(entry, on ? HealthState.NotWorking : HealthState.Untested),
+            Palette.Danger));
+
+        panel.Children.Add(verdicts);
 
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 14, 0, 0),
         };
 
         if (entry.NeedsApproval)
         {
-            actions.Children.Add(Button("Review", () => Review(entry)));
+            actions.Children.Add(Fluent.IconButton(
+                Fluent.Read, "Review", () => Review(entry), Palette.Accent,
+                "Read the plan and approve it"));
         }
-
-        // The two halves of "does this actually do what I meant?". Clicking the verdict an
-        // automation already has withdraws it, so a wrong click is one click to undo.
-        actions.Children.Add(Verdict("Works", entry, HealthState.Works));
-        actions.Children.Add(Verdict("Not working", entry, HealthState.NotWorking));
 
         // Only once it has actually run. Offering repair for an automation with no transcript
-        // would produce a prompt whose most useful section says "there is no transcript".
+        // produces a prompt whose most useful section says "there is no transcript".
         if (entry.LastRun is not null)
         {
-            actions.Children.Add(Button("Repair", () => Repair(entry)));
+            actions.Children.Add(Fluent.IconButton(
+                Fluent.Repair, "Repair", () => Repair(entry), null,
+                "Build a prompt to get this fixed"));
         }
 
-        actions.Children.Add(Button("History", () => History(entry)));
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.History, "History", () => History(entry), null,
+            "Past versions, with a diff against what is on disk"));
 
-        var toggle = new CheckBox
+        panel.Children.Add(actions);
+        return panel;
+    }
+
+    /// <summary>
+    /// Record a verdict, and go straight on to repair when it is a bad one.
+    /// </summary>
+    /// <remarks>
+    /// The moment a user decides something is broken is the moment they know what is wrong with
+    /// it. Asking later gets a vaguer answer, and a vague complaint makes a worse repair prompt.
+    /// </remarks>
+    private void SetVerdict(DashboardEntry entry, HealthState state)
+    {
+        if (refreshing)
         {
-            IsChecked = entry.IsEnabled,
-            Content = "On",
-            Foreground = Palette.Text,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
-        };
+            return;
+        }
 
-        // Checked/Unchecked rather than Click. Click only fires for mouse and keyboard, so a
-        // toggle driven through UI Automation — which is how a screen reader operates it — would
-        // move the tick and change nothing, leaving the dashboard claiming an automation was off
-        // while its hotkey stayed live. IsChecked is set above, before these are attached, so
-        // building the row cannot re-enter.
-        toggle.Checked += (_, _) => Toggle(entry, enabled: true);
-        toggle.Unchecked += (_, _) => Toggle(entry, enabled: false);
+        host.SetHealth(entry.FileName, state, state == entry.Health ? entry.HealthNote : null);
+        Refresh();
 
-        actions.Children.Add(toggle);
+        if (state == HealthState.NotWorking)
+        {
+            Repair(entry with { Health = state });
+            return;
+        }
 
-        Grid.SetColumn(actions, 2);
-        grid.Children.Add(actions);
-
-        card.Child = grid;
-        return card;
+        Say(state switch
+        {
+            HealthState.Works => $"{entry.Name} marked as working.",
+            _ => $"{entry.Name} is untested again.",
+        });
     }
 
     private void Toggle(DashboardEntry entry, bool enabled)
@@ -445,59 +708,6 @@ public sealed class DashboardWindow : Window
 
         window.Content = layout;
         window.ShowDialog();
-    }
-
-    /// <summary>
-    /// One of the two verdict buttons, highlighted when it is the current verdict.
-    /// </summary>
-    /// <remarks>
-    /// Marking an automation as not working goes straight on to the repair dialog. That is the
-    /// whole point of recording the verdict: the moment a user decides something is broken is the
-    /// moment they know what is wrong with it, and asking them again later gets a vaguer answer.
-    /// </remarks>
-    private Button Verdict(string text, DashboardEntry entry, HealthState state)
-    {
-        var active = entry.Health == state;
-
-        var button = new Button
-        {
-            Content = text,
-            Foreground = active
-                ? (state == HealthState.Works ? Palette.Accent : Palette.Danger)
-                : Palette.Muted,
-            Background = active ? Palette.Selection : Palette.Edge,
-            BorderBrush = active
-                ? (state == HealthState.Works ? Palette.Accent : Palette.Danger)
-                : Palette.Edge,
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(8, 3, 8, 3),
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 11,
-            Cursor = System.Windows.Input.Cursors.Hand,
-        };
-
-        button.Click += (_, _) =>
-        {
-            // Clicking the current verdict withdraws it rather than reasserting it.
-            var next = active ? HealthState.Untested : state;
-            host.SetHealth(entry.FileName, next, next == state ? entry.HealthNote : null);
-            Refresh();
-
-            if (next == HealthState.NotWorking)
-            {
-                Repair(entry with { Health = next });
-            }
-            else
-            {
-                Say(next switch
-                {
-                    HealthState.Works => $"{entry.Name} marked as working.",
-                    _ => $"{entry.Name} is untested again.",
-                });
-            }
-        };
-
-        return button;
     }
 
     /// <summary>
@@ -752,7 +962,8 @@ public sealed class DashboardWindow : Window
         bottom.Children.Add(Button("Save", SavePasted));
         panel.Children.Add(bottom);
 
-        panel.Children.Add(status);
+        // The status line used to live here. It now sits above this panel, where it is visible
+        // whether or not this is expanded.
         return panel;
     }
 
