@@ -338,14 +338,15 @@ public sealed class DashboardWindow : Window
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        // Green when it is on and holding its combination, amber when it is on and not, red when
-        // it is off. Amber is the one that earns its keep: "switched on, but another application
-        // owns this chord" is exactly the state a green dot would hide, and it is the failure
-        // this product is most prone to hiding.
+        // Cyan when it is on and holding its combination — the accent is the colour of a live
+        // hotkey throughout this app, so a lit dot and a lit toggle say the same thing. Amber when
+        // it is on and not running, red when off. Amber is the one that earns its keep: "switched
+        // on, but another application owns this chord" is exactly the state a cyan dot would hide,
+        // and it is the failure this product is most prone to hiding.
         var (colour, why) = entry switch
         {
             { IsEnabled: false } => (Palette.Danger, "Off"),
-            { IsLive: true } => (Palette.Good, "On, and running"),
+            { IsLive: true } => (Palette.Glow, "On, and running"),
             _ => (Palette.Warning, $"On, but not running — {entry.State}"),
         };
 

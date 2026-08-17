@@ -289,82 +289,100 @@ public abstract class OverlayWindow : Window
 /// The colour scheme, in one place so every window matches.
 /// </summary>
 /// <remarks>
-/// Taken from the product's actual world rather than from a dark-theme template. This app is
-/// about a keyboard, and keyboard culture already has a mature palette tradition: keycap
-/// colourways on an anodised case. So the neutrals are the <em>warm</em> dark grey of an anodised
-/// aluminium body — never the blue-grey every dark app defaults to — the text is the warm
-/// off-white of retro-beige legends, and the colours that mean something come from keycap sets:
-/// botanical sage, clay ochre, terracotta, and a dusty periwinkle that holds hands with the blue
-/// keycap in the app icon.
+/// Deep space charcoal, cool structural slate, electric cyan glow — 60/30/10. Most of the screen
+/// is a neutral near-black that keeps a bright vector mark legible without competing with it;
+/// cards and inputs sit one slate step above it; and cyan is spent only on the things that are
+/// live or actionable.
 /// <para>
-/// Distribution is roughly 60/30/10. <see cref="Surface"/> is most of the screen,
-/// <see cref="Raised"/> and <see cref="Selection"/> carry the structure, and accent plus the
-/// three semantic colours are the small remainder. Colour here is scarce on purpose: it means
-/// status or action, and nothing on this screen is tinted for decoration.
+/// One hue family across the surfaces, shifting lightness only, so stacking reads as depth rather
+/// than as different materials. Text runs to four levels because two is not a hierarchy.
 /// </para>
 /// <para>
-/// One hue family across the surfaces, shifting lightness only — four steps of a few percent
-/// each, so stacking reads as depth rather than as different materials.
+/// Three values are additions rather than substitutions, and each is here for a functional
+/// reason: <see cref="Edge"/>, because the specified slate is a two-percent step against a card
+/// and an invisible border is not a border; <see cref="Soft"/>, to fill the gap between primary
+/// and muted text; and the three semantic colours, which no accent can carry — cyan cannot also
+/// mean "broken". They are drawn from the same family so they read as belonging.
 /// </para>
 /// </remarks>
 internal static class Palette
 {
-    // ---- 60%: the case ----
+    // ---- 60%: deep space charcoal ----
 
-    /// <summary>The window itself: warm near-black, the colour of an anodised body.</summary>
-    public static SolidColorBrush Surface { get; } = Frozen(0xFF, 0x13, 0x12, 0x11);
+    /// <summary>The application background and main layout canvas.</summary>
+    public static SolidColorBrush Surface { get; } = Frozen(0xFF, 0x0B, 0x0E, 0x14);
 
-    // ---- 30%: what sits on it ----
+    /// <summary>Window frames, and the card a row sits on.</summary>
+    public static SolidColorBrush Raised { get; } = Frozen(0xFF, 0x16, 0x1B, 0x22);
 
-    /// <summary>A card, one step above the case.</summary>
-    public static SolidColorBrush Raised { get; } = Frozen(0xFF, 0x1D, 0x1B, 0x19);
+    // ---- 30%: cool structural slate ----
 
     /// <summary>The same card under the pointer.</summary>
-    public static SolidColorBrush RaisedHover { get; } = Frozen(0xFF, 0x26, 0x23, 0x20);
+    public static SolidColorBrush RaisedHover { get; } = Frozen(0xFF, 0x21, 0x26, 0x2D);
 
-    /// <summary>Inset surfaces — keycaps, inputs, a selected row. Darker, because they receive.</summary>
-    public static SolidColorBrush Selection { get; } = Frozen(0xFF, 0x2E, 0x2A, 0x26);
-
-    /// <summary>A boundary that should be findable but never the first thing seen.</summary>
-    public static SolidColorBrush Edge { get; } = Frozen(0xFF, 0x33, 0x2F, 0x2A);
-
-    // ---- text: four levels, because two is a flat hierarchy ----
-
-    /// <summary>Primary: the warm off-white of a legend printed on a keycap.</summary>
-    public static SolidColorBrush Text { get; } = Frozen(0xFF, 0xEF, 0xEA, 0xE2);
-
-    /// <summary>Secondary: supporting text that is still meant to be read.</summary>
-    public static SolidColorBrush Soft { get; } = Frozen(0xFF, 0xC4, 0xBD, 0xB2);
-
-    /// <summary>Tertiary: metadata, hints, counts.</summary>
-    public static SolidColorBrush Muted { get; } = Frozen(0xFF, 0x94, 0x8C, 0x80);
-
-    /// <summary>Disabled: present, but not offering anything.</summary>
-    public static SolidColorBrush Faint { get; } = Frozen(0xFF, 0x60, 0x5A, 0x52);
-
-    // ---- 10%: colour that means something ----
+    /// <summary>Input fields, keycaps, secondary button fills, a selected row.</summary>
+    public static SolidColorBrush Selection { get; } = Frozen(0xFF, 0x21, 0x26, 0x2D);
 
     /// <summary>
-    /// The one accent. Dusty periwinkle — a keycap blue, and a cool note against warm neutrals.
-    /// </summary>
-    public static SolidColorBrush Accent { get; } = Frozen(0xFF, 0x8F, 0xA9, 0xE8);
-
-    /// <summary>A hotkey that is on and actually holding its combination. Botanical sage.</summary>
-    public static SolidColorBrush Good { get; } = Frozen(0xFF, 0x93, 0xB4, 0x7F);
-
-    /// <summary>
-    /// On, but not running. Clay ochre.
+    /// A boundary that should be findable but never the first thing seen.
     /// </summary>
     /// <remarks>
-    /// Its own colour rather than green or red, because it is neither. An automation switched on
+    /// One step above the specified slate. #21262D is the card fill, and a border in the same
+    /// value as the surface it edges cannot be seen at all.
+    /// </remarks>
+    public static SolidColorBrush Edge { get; } = Frozen(0xFF, 0x30, 0x36, 0x3D);
+
+    // ---- text: four levels ----
+
+    /// <summary>Primary.</summary>
+    public static SolidColorBrush Text { get; } = Frozen(0xFF, 0xF0, 0xF6, 0xFC);
+
+    /// <summary>Secondary: supporting text still meant to be read.</summary>
+    public static SolidColorBrush Soft { get; } = Frozen(0xFF, 0xC9, 0xD1, 0xD9);
+
+    /// <summary>Tertiary: metadata, hints, counts.</summary>
+    public static SolidColorBrush Muted { get; } = Frozen(0xFF, 0x8B, 0x94, 0x9E);
+
+    /// <summary>Disabled: present, but not offering anything.</summary>
+    public static SolidColorBrush Faint { get; } = Frozen(0xFF, 0x6E, 0x76, 0x81);
+
+    // ---- 10%: electric cyan glow ----
+
+    /// <summary>
+    /// The accent: live keycaps, toggles, primary actions, execution indicators.
+    /// </summary>
+    /// <remarks>
+    /// The deeper of the two cyans, because this one also has near-black text sitting on it in
+    /// filled buttons and the brighter value pushes that toward glare.
+    /// </remarks>
+    public static SolidColorBrush Accent { get; } = Frozen(0xFF, 0x00, 0xD2, 0xFF);
+
+    /// <summary>The brighter cyan, for the glow itself rather than for a surface.</summary>
+    public static SolidColorBrush Glow { get; } = Frozen(0xFF, 0x00, 0xF2, 0xFE);
+
+    /// <summary>
+    /// Your verdict that an automation does what you meant.
+    /// </summary>
+    /// <remarks>
+    /// Green rather than cyan, and the distinction is worth keeping: cyan is what the machine
+    /// reports — live, running, actionable — and green is what <em>you</em> concluded. Painting
+    /// both the same colour would merge a fact with an opinion.
+    /// </remarks>
+    public static SolidColorBrush Good { get; } = Frozen(0xFF, 0x3F, 0xB9, 0x50);
+
+    /// <summary>
+    /// On, but not running.
+    /// </summary>
+    /// <remarks>
+    /// Its own colour rather than cyan or red, because it is neither. An automation switched on
     /// whose chord another application already holds is the failure this product is most prone
     /// to hiding: the user turned it on, the switch says on, and the key does nothing. Painting
-    /// that green would make the dashboard lie in exactly the place it is meant to be trusted.
+    /// that cyan would make the dashboard lie in exactly the place it is meant to be trusted.
     /// </remarks>
-    public static SolidColorBrush Warning { get; } = Frozen(0xFF, 0xD9, 0xA0, 0x5B);
+    public static SolidColorBrush Warning { get; } = Frozen(0xFF, 0xD2, 0x99, 0x22);
 
-    /// <summary>Off, failed, or about to destroy something. Terracotta.</summary>
-    public static SolidColorBrush Danger { get; } = Frozen(0xFF, 0xDD, 0x85, 0x71);
+    /// <summary>Off, failed, or about to destroy something.</summary>
+    public static SolidColorBrush Danger { get; } = Frozen(0xFF, 0xF8, 0x51, 0x49);
 
     /// <summary>
     /// The glow of a backlight bleeding out from under a keycap.

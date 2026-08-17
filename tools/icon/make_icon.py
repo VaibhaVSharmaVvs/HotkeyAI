@@ -51,9 +51,12 @@ CHROME = [
 # window and is not subject to any minimum window size.
 RENDER_AT = 512
 
-SKIRT_TOP, SKIRT_BOTTOM = "#3D6FE8", "#1E3A8F"
-FACE_TOP, FACE_MID, FACE_BOTTOM = "#8FC0FF", "#5A9CF8", "#3B78E0"
-INK = "#0E1730"
+# Electric cyan glow on deep space charcoal. The keycap's face is the accent pair; the skirt is
+# the shadowed side of the same cyan, and the mark cut into it is the application background —
+# so the icon is made of exactly the colours the app is, and reads as lit rather than printed.
+SKIRT_TOP, SKIRT_BOTTOM = "#00A8CC", "#00566B"
+FACE_TOP, FACE_MID, FACE_BOTTOM = "#7DFBFF", "#00F2FE", "#00C2E8"
+INK = "#0B0E14"
 
 
 def spec(size):

@@ -155,8 +155,8 @@ internal sealed class DiffWindow : Window
         // this is the screen where missing a removed line matters most.
         var (marker, ink, back) = line.Kind switch
         {
-            DiffKind.Added => ("+", Palette.Good, Colour(0x1C, 0x33, 0x28)),
-            DiffKind.Removed => ("−", Palette.Danger, Colour(0x38, 0x22, 0x24)),
+            DiffKind.Added => ("+", Palette.Good, Colour(0x0D, 0x28, 0x18)),
+            DiffKind.Removed => ("−", Palette.Danger, Colour(0x2D, 0x14, 0x17)),
             _ => (" ", Palette.Muted, Brushes.Transparent),
         };
 
