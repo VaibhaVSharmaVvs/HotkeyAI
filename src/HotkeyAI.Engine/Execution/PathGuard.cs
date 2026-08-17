@@ -26,7 +26,30 @@ public sealed class PathGuard(IReadOnlyList<string> allowedRoots, IRealPath? rea
     /// <summary>Whether a resolved path may be touched.</summary>
     /// <param name="path">The path after interpolation.</param>
     /// <param name="reason">Why it was refused, when it was.</param>
-    public bool IsAllowed(string path, out string reason)
+    public bool IsAllowed(string path, out string reason) => IsAllowed(path, path, out reason);
+
+    /// <summary>
+    /// Whether a resolved path may be touched, quoting a different spelling in the refusal.
+    /// </summary>
+    /// <param name="path">The path after interpolation. This is what gets checked.</param>
+    /// <param name="display">
+    /// The same path with anything from outside the plan redacted. This is what the refusal quotes,
+    /// because a refusal becomes a log line.
+    /// </param>
+    /// <param name="reason">Why it was refused, when it was.</param>
+    /// <remarks>
+    /// Security re-audit 2026-08-17, finding B. The refusal message quoted the path it was given, and
+    /// that path can be clipboard text — the refusal fires for <em>any</em> value that is not a valid
+    /// in-root path, so a clipboard holding a credential rather than a path was echoed verbatim into
+    /// the transcript, the agent log and the repair prompt. Exactly what M1's redaction of
+    /// <c>get_clipboard</c> was for, undone by the error path beside it.
+    /// <para>
+    /// Two parameters rather than one redacting call inside: the value that gets <em>checked</em> must
+    /// stay the real one, or the boundary is deciding about a string the OS will never see. Separating
+    /// them makes that impossible to get backwards by accident.
+    /// </para>
+    /// </remarks>
+    public bool IsAllowed(string path, string display, out string reason)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -38,20 +61,20 @@ public sealed class PathGuard(IReadOnlyList<string> allowedRoots, IRealPath? rea
         {
             // Interpolation left a marker behind, so a variable was missing. Refusing beats
             // operating on a path containing a literal "${…}".
-            reason = $"\"{path}\" still contains an unresolved variable.";
+            reason = $"\"{display}\" still contains an unresolved variable.";
             return false;
         }
 
         if (!WindowsPath.IsAbsolute(path))
         {
-            reason = $"\"{path}\" is not an absolute path.";
+            reason = $"\"{display}\" is not an absolute path.";
             return false;
         }
 
         if (WindowsPath.Normalise(path) is null)
         {
             // Normalise returns null when the path climbs above its own root.
-            reason = $"\"{path}\" escapes above its root.";
+            reason = $"\"{display}\" escapes above its root.";
             return false;
         }
 
@@ -63,7 +86,7 @@ public sealed class PathGuard(IReadOnlyList<string> allowedRoots, IRealPath? rea
 
         if (!roots.Any(root => WindowsPath.IsUnder(path, root)))
         {
-            reason = $"\"{path}\" is outside the allowed roots ({string.Join(", ", roots)}).";
+            reason = $"\"{display}\" is outside the allowed roots ({string.Join(", ", roots)}).";
             return false;
         }
 
@@ -80,7 +103,7 @@ public sealed class PathGuard(IReadOnlyList<string> allowedRoots, IRealPath? rea
         if (realPath?.Resolve(path) is { } actual
             && !roots.Any(root => WindowsPath.IsUnder(actual, root)))
         {
-            reason = $"\"{path}\" is a link to \"{actual}\", which is outside the allowed roots "
+            reason = $"\"{display}\" is a link to \"{actual}\", which is outside the allowed roots "
                    + $"({string.Join(", ", roots)}).";
 
             return false;

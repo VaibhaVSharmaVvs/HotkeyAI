@@ -10,6 +10,7 @@ public sealed partial class PlanExecutor
         HotkeyAction action, RunState run, CancellationToken token) => action switch
     {
         // ------------------------------- process -------------------------------
+
         LaunchProcessAction a => await LaunchAsync(a, run, token).ConfigureAwait(false),
 
         TerminateProcessAction a => await TerminateAsync(a, token).ConfigureAwait(false),
@@ -58,12 +59,12 @@ public sealed partial class PlanExecutor
 
         // ------------------------------- files -------------------------------
         ListDirectoriesAction a => await ListAsync(
-            run.Variables.Interpolate(a.Path), a.Into, run,
+            Both(run, a.Path), a.Into, run,
             path => desktop.Files.ListDirectoriesAsync(path, a.Depth ?? 1, token), token)
             .ConfigureAwait(false),
 
         ListFilesAction a => await ListAsync(
-            run.Variables.Interpolate(a.Path), a.Into, run,
+            Both(run, a.Path), a.Into, run,
             path => desktop.Files.ListFilesAsync(path, a.Pattern, a.Depth ?? 1, token), token)
             .ConfigureAwait(false),
 
@@ -109,10 +110,39 @@ public sealed partial class PlanExecutor
 
     // ------------------------------- process -------------------------------
 
+    /// <summary>
+    /// A value the engine acts on, paired with the version of it that is safe to write down.
+    /// </summary>
+    /// <param name="Value">The real interpolated value. Everything the OS sees uses this.</param>
+    /// <param name="Loggable">
+    /// The same template with anything from outside the plan redacted. Everything that becomes a log
+    /// line uses this.
+    /// </param>
+    /// <remarks>
+    /// Security re-audit 2026-08-17, finding B. M8 redacted <c>abort.reason</c> and stopped there, but
+    /// several handlers interpolate a path and then put it in a step detail — in the success line and,
+    /// worse, in the guard's refusal, which fires for <em>any</em> value that is not a valid in-root
+    /// path. So a clipboard holding a credential rather than a path was echoed verbatim into the
+    /// transcript, the agent log and the repair prompt.
+    /// <para>
+    /// A record rather than two locals per call site: the whole failure was one value used for two
+    /// purposes, and naming both purposes once makes the mix-up visible at every use.
+    /// </para>
+    /// </remarks>
+    private readonly record struct Resolved(string Value, string Loggable);
+
+    /// <summary>Interpolate a template both ways at once.</summary>
+    private static Resolved Both(RunState run, string? template) =>
+        new(run.Variables.Interpolate(template), run.Variables.InterpolateForLog(template));
+
     private async Task<(StepOutcome, string)> LaunchAsync(
         LaunchProcessAction action, RunState run, CancellationToken token)
     {
         string executable;
+
+        // What the log is allowed to say. Identical to `executable` unless the path came from a
+        // variable holding clipboard or prompt text — re-audit finding B.
+        string loggableExecutable;
 
         if (action.App is { } app)
         {
@@ -132,35 +162,46 @@ public sealed partial class PlanExecutor
                     + "names a logical application so this can be reported rather than guessed.");
             }
 
+            // Resolution went through the app registry, so this is the engine's own string rather
+            // than anything the plan supplied. Nothing to redact.
             executable = resolved.Path;
+            loggableExecutable = resolved.Path;
         }
         else
         {
             // Safety control 2, run-time half: the literal path was checked at validation, but
             // it may interpolate, so the resolved value is what matters.
-            executable = run.Variables.Interpolate(action.Path);
-            if (!pathGuard.IsAllowed(executable, out var reason))
+            var target = Both(run, action.Path);
+            executable = target.Value;
+            loggableExecutable = target.Loggable;
+
+            if (!pathGuard.IsAllowed(target.Value, target.Loggable, out var reason))
             {
                 return (StepOutcome.Failed, $"Refused to launch: {reason}");
             }
         }
 
         var argv = action.Argv.Select(run.Variables.Interpolate).ToList();
-        var workingDirectory = action.WorkingDirectory is null
-            ? null
-            : run.Variables.Interpolate(action.WorkingDirectory);
+        var working = action.WorkingDirectory is null
+            ? (Resolved?)null
+            : Both(run, action.WorkingDirectory);
 
-        if (workingDirectory is not null && !pathGuard.IsAllowed(workingDirectory, out var why))
+        if (working is { } directory
+            && !pathGuard.IsAllowed(directory.Value, directory.Loggable, out var why))
         {
             return (StepOutcome.Failed, $"Refused: working directory {why}");
         }
 
         await desktop.Processes
-            .LaunchAsync(executable, argv, workingDirectory, token)
+            .LaunchAsync(executable, argv, working?.Value, token)
             .ConfigureAwait(false);
 
+        // argv is counted, never listed — it may hold clipboard text too, and a count is all the log
+        // needs to explain what happened.
         return (StepOutcome.Succeeded,
-            argv.Count == 0 ? $"Launched {executable}." : $"Launched {executable} with {argv.Count} argument(s).");
+            argv.Count == 0
+                ? $"Launched {loggableExecutable}."
+                : $"Launched {loggableExecutable} with {argv.Count} argument(s).");
     }
 
     /// <summary>
@@ -389,45 +430,47 @@ public sealed partial class PlanExecutor
     // ------------------------------- files -------------------------------
 
     private async Task<(StepOutcome, string)> ListAsync(
-        string path,
+        Resolved path,
         string into,
         RunState run,
         Func<string, ValueTask<IReadOnlyList<string>>> list,
         CancellationToken token)
     {
-        if (!pathGuard.IsAllowed(path, out var reason))
+        if (!pathGuard.IsAllowed(path.Value, path.Loggable, out var reason))
         {
             return (StepOutcome.Failed, $"Refused to read: {reason}");
         }
 
-        var found = await list(path).ConfigureAwait(false);
+        var found = await list(path.Value).ConfigureAwait(false);
         run.Variables.SetList(into, found);
 
-        return (StepOutcome.Succeeded, $"Found {found.Count} item(s) in {path}.");
+        // The items themselves are not listed, only counted. They are filesystem contents rather than
+        // plan text, and a folder's file names are the sort of thing PLAN.md item 7 is about.
+        return (StepOutcome.Succeeded, $"Found {found.Count} item(s) in {path.Loggable}.");
     }
 
     private async Task<(StepOutcome, string)> PathExistsAsync(
         PathExistsAction action, RunState run, CancellationToken token)
     {
-        var path = run.Variables.Interpolate(action.Path);
+        var path = Both(run, action.Path);
 
-        if (!pathGuard.IsAllowed(path, out var reason))
+        if (!pathGuard.IsAllowed(path.Value, path.Loggable, out var reason))
         {
             return (StepOutcome.Failed, $"Refused to check: {reason}");
         }
 
-        var exists = await desktop.Files.ExistsAsync(path, token).ConfigureAwait(false);
+        var exists = await desktop.Files.ExistsAsync(path.Value, token).ConfigureAwait(false);
         run.Variables.SetBoolean(action.Into, exists);
 
-        return (StepOutcome.Succeeded, $"{path} {(exists ? "exists" : "does not exist")}.");
+        return (StepOutcome.Succeeded, $"{path.Loggable} {(exists ? "exists" : "does not exist")}.");
     }
 
     private async Task<(StepOutcome, string)> OpenAsync(
         OpenPathAction action, RunState run, CancellationToken token)
     {
-        var path = run.Variables.Interpolate(action.Path);
+        var path = Both(run, action.Path);
 
-        if (!pathGuard.IsAllowed(path, out var reason))
+        if (!pathGuard.IsAllowed(path.Value, path.Loggable, out var reason))
         {
             return (StepOutcome.Failed, $"Refused to open: {reason}");
         }
@@ -437,13 +480,13 @@ public sealed partial class PlanExecutor
         // finding M9: that made open_path an unrestricted ShellExecute over every directory another
         // process can drop a file into. Checked here rather than in the Windows layer so it holds
         // against FakeDesktop too, and so one place decides.
-        if (!Core.Policy.ShellOpen.IsAllowed(path, out var refusal))
+        if (!Core.Policy.ShellOpen.IsAllowed(path.Value, path.Loggable, out var refusal))
         {
             return (StepOutcome.Failed, $"Refused to open: {refusal}");
         }
 
-        await desktop.Files.OpenAsync(path, token).ConfigureAwait(false);
-        return (StepOutcome.Succeeded, $"Opened {path}.");
+        await desktop.Files.OpenAsync(path.Value, token).ConfigureAwait(false);
+        return (StepOutcome.Succeeded, $"Opened {path.Loggable}.");
     }
 
     // ------------------------------- clipboard & prompts -------------------------------

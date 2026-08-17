@@ -54,7 +54,19 @@ public static class ShellOpen
     /// </summary>
     /// <param name="path">A resolved path. A directory, or a path with no extension, is fine.</param>
     /// <param name="reason">Why it was refused, phrased for the person reading the log.</param>
-    public static bool IsAllowed(string? path, out string reason)
+    public static bool IsAllowed(string? path, out string reason) =>
+        IsAllowed(path, path, out reason);
+
+    /// <summary>
+    /// Whether the shell may open this path, quoting a different spelling in the refusal.
+    /// </summary>
+    /// <param name="path">The resolved path. This is what gets checked.</param>
+    /// <param name="display">
+    /// The same path with anything from outside the plan redacted — what the refusal quotes, since a
+    /// refusal becomes a log line. Security re-audit 2026-08-17, finding B.
+    /// </param>
+    /// <param name="reason">Why it was refused, when it was.</param>
+    public static bool IsAllowed(string? path, string? display, out string reason)
     {
         reason = "";
 
@@ -71,7 +83,7 @@ public static class ShellOpen
         }
 
         reason =
-            $"\"{path}\" is a {extension} file, which Windows executes rather than opens. "
+            $"\"{display ?? path}\" is a {extension} file, which Windows executes rather than opens. "
             + "open_path hands a path to the shell, so this would run it. Use launch_process with a "
             + "logical app name if the intent is to start a program — that goes through the app "
             + "registry, which is checked.";

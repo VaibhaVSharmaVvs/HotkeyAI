@@ -164,6 +164,133 @@ public sealed class LogRedactionTests
         Assert.DoesNotContain(Secret, result.FailureReason!, StringComparison.Ordinal);
     }
 
+    // ------------------------- re-audit finding B: the other five sites -------------------------
+
+    /// <summary>
+    /// Every handler that interpolates a path and then logs it, refusal path included.
+    /// </summary>
+    /// <remarks>
+    /// Security re-audit 2026-08-17, finding B. M8 switched <c>abort.reason</c> to the redacting
+    /// interpolation and stopped there. The refusal path is the general leak: the path guard refuses
+    /// <em>any</em> value that is not a valid in-root path, and quoted the value it was given — so
+    /// clipboard text that is not a path at all was echoed verbatim into the transcript, the agent log
+    /// and the repair prompt.
+    /// <para>
+    /// The re-audit named three handlers. There were five: <c>launch_process</c>'s executable and its
+    /// <c>workingDirectory</c> leaked the same way.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("path_exists", """{ "type": "path_exists", "id": "a2", "path": "${clip}", "into": "found" }""")]
+    [InlineData("open_path", """{ "type": "open_path", "id": "a2", "path": "${clip}" }""")]
+    [InlineData("list_files", """{ "type": "list_files", "id": "a2", "path": "${clip}", "into": "items" }""")]
+    [InlineData("list_directories", """{ "type": "list_directories", "id": "a2", "path": "${clip}", "into": "items" }""")]
+    [InlineData("workingDirectory", """{ "type": "launch_process", "id": "a2", "app": "notepad", "workingDirectory": "${clip}" }""")]
+    public async Task ARefusalDoesNotEchoTheClipboard(string label, string action)
+    {
+        var desktop = new FakeDesktop { ClipboardText = Secret };
+
+        // The workingDirectory case launches an app, and an unresolvable app fails before the
+        // directory is ever checked — which would pass this test for the wrong reason.
+        desktop.InstalledApps["notepad"] = @"C:\Windows\notepad.exe";
+
+        var result = await Executor(desktop).RunAsync(
+            Plan(
+                $$"""
+                  { "type": "get_clipboard", "id": "a1", "into": "clip" },
+                  {{action}}
+                  """,
+                """
+                { "name": "clip", "type": "text" },
+                { "name": "found", "type": "boolean" },
+                { "name": "items", "type": "pathList" }
+                """),
+            CancellationToken.None);
+
+        var transcript = result.ToTranscript();
+
+        Assert.False(result.Succeeded, label);
+        Assert.DoesNotContain(Secret, transcript, StringComparison.Ordinal);
+        Assert.DoesNotContain("hunter2", transcript, StringComparison.Ordinal);
+        Assert.DoesNotContain(Secret, result.FailureReason!, StringComparison.Ordinal);
+
+        // Still says which variable, so the transcript stays diagnosable.
+        Assert.Contains("[clip redacted]", transcript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ASuccessLineDoesNotEchoTheClipboardEither()
+    {
+        // The engine cannot tell a path-shaped secret from a path, so the success detail is redacted on
+        // the same rule as the refusal. Less specific than before, and correct.
+        var desktop = new FakeDesktop { ClipboardText = @"C:\Users\test\Projects\hunter2.txt" };
+        desktop.ExistingPaths.Add(@"C:\Users\test\Projects\hunter2.txt");
+
+        var result = await Executor(desktop).RunAsync(
+            Plan("""
+                 { "type": "get_clipboard", "id": "a1", "into": "clip" },
+                 { "type": "path_exists", "id": "a2", "path": "${clip}", "into": "found" }
+                 """,
+                 """
+                 { "name": "clip", "type": "text" },
+                 { "name": "found", "type": "boolean" }
+                 """),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.ToTranscript());
+        Assert.DoesNotContain("hunter2", result.ToTranscript(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheGuardStillChecksTheRealValueNotTheRedactedOne()
+    {
+        // The failure this fix could easily introduce. If the redacted string were handed to the guard,
+        // "[clip redacted]" would be checked instead of the path — every clipboard path would be
+        // refused, and worse, the boundary would be deciding about a string the OS never sees.
+        var desktop = new FakeDesktop { ClipboardText = @"C:\Users\test\Projects\notes.txt" };
+        desktop.ExistingPaths.Add(@"C:\Users\test\Projects\notes.txt");
+
+        var result = await Executor(desktop).RunAsync(
+            Plan("""
+                 { "type": "get_clipboard", "id": "a1", "into": "clip" },
+                 { "type": "open_path", "id": "a2", "path": "${clip}" }
+                 """,
+                 """{ "name": "clip", "type": "text" }"""),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.ToTranscript());
+
+        // The desktop was handed the real path, redaction or no redaction.
+        Assert.Contains(desktop.Effects, e => e == @"open:C:\Users\test\Projects\notes.txt");
+    }
+
+    [Fact]
+    public async Task APathThePlanWroteItselfIsStillNamedInFull()
+    {
+        // show_picker uses the ordinary setter, so "open what I picked" still logs the real path —
+        // which is most of what these logs are read for.
+        var desktop = new FakeDesktop { PickerChoice = @"C:\Users\test\Projects\chosen" };
+        desktop.Directories[@"C:\Users\test\Projects"] = [@"C:\Users\test\Projects\chosen"];
+
+        var result = await Executor(desktop).RunAsync(
+            Plan("""
+                 { "type": "list_directories", "id": "a1", "path": "C:\\Users\\test\\Projects",
+                   "into": "items" },
+                 { "type": "show_picker", "id": "a2", "source": "items", "prompt": "Which?",
+                   "into": "picked" },
+                 { "type": "open_path", "id": "a3", "path": "${picked}" }
+                 """,
+                 """
+                 { "name": "items", "type": "pathList" },
+                 { "name": "picked", "type": "path" }
+                 """),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.ToTranscript());
+        Assert.Contains("chosen", result.ToTranscript(), StringComparison.Ordinal);
+        Assert.DoesNotContain("redacted", result.ToTranscript(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task TheClipboardStillReachesTheDesktopUnredacted()
     {
