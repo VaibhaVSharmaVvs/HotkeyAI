@@ -457,8 +457,16 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
    seen the rendered plan and approved it — at which point it's signed. This is the resolution
    of the conflict in challenge 2: it keeps malware from getting silent code execution while
    making hand-authored files a first-class input.
-5. **Confirmation on destructive actions.** `terminate_process` and `close_process` prompt on
-   first use per automation, remembered thereafter.
+5. **Confirmation on destructive actions.** `terminate_process` prompts **every run**, not once
+   per automation, and the prompt says how many processes match and whether child processes go
+   with them.
+
+   Stricter than this control originally read ("prompt on first use, remembered thereafter"), and
+   deliberately so: the user is approving *this* kill, with whatever unsaved work is currently
+   open, rather than the idea of killing things — and a remembered yes is a yes given to a
+   different desktop. The review's counter-point is real, though, so the prompt does not fire when
+   nothing matches: a prompt that appears when there is nothing to close is exactly how the reflex
+   to click through gets trained (security review 2026-08-17, finding L3).
 6. **Never log secrets.** Execution logs record action ids and outcomes, and redact
    `type_text` payloads and clipboard content by default. This matters more in V1 than V2 —
    you will be pasting logs into a repair prompt by hand.

@@ -133,11 +133,33 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
             ? throw boom
             : ValueTask.FromResult(RunningProcesses.Contains(processName));
 
-    public async ValueTask TerminateAsync(
+    /// <summary>
+    /// How many processes a name stands for. One unless a test says otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Security review 2026-08-17, finding L3: the confirmation prompt said "Close chrome?" while the
+    /// terminate killed every process of that name. Testing the corrected prompt needs a fake that
+    /// can have more than one.
+    /// </remarks>
+    public Dictionary<string, int> ProcessCounts { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public ValueTask<int> CountAsync(string processName, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            ProcessCounts.TryGetValue(processName, out var many)
+                ? many
+                : RunningProcesses.Contains(processName) ? 1 : 0);
+
+    public async ValueTask<int> TerminateAsync(
         string processName, bool force, CancellationToken cancellationToken)
     {
         await RecordAsync($"terminate:{processName}:{force}").ConfigureAwait(false);
+
+        var closed = await CountAsync(processName, cancellationToken).ConfigureAwait(false);
+
         RunningProcesses.Remove(processName);
+        ProcessCounts.Remove(processName);
+
+        return closed;
     }
 
     // ------------------------------- windows -------------------------------
@@ -260,8 +282,22 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
         string message, NotifyLevel level, CancellationToken cancellationToken) =>
         RecordAsync($"notify:{level}:{message}");
 
+    /// <summary>The last question the user was asked, or null if they were never asked.</summary>
+    /// <remarks>
+    /// Kept separately from <see cref="Effects"/> because the wording is the thing under test for
+    /// security review 2026-08-17 finding L3, and picking it back out of an effect string would mean
+    /// the test asserting on a prefix it does not care about.
+    /// </remarks>
+    public string? ConfirmQuestion { get; private set; }
+
+    /// <summary>Called for each confirmation, so a test can count them.</summary>
+    public Action<string>? OnConfirm { get; set; }
+
     public async ValueTask<bool> ConfirmAsync(string message, CancellationToken cancellationToken)
     {
+        ConfirmQuestion = message;
+        OnConfirm?.Invoke(message);
+
         await RecordAsync($"confirm:{message}").ConfigureAwait(false);
         return ConfirmAnswer;
     }

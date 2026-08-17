@@ -108,7 +108,17 @@ public interface IProcesses
 
     ValueTask<bool> IsRunningAsync(string processName, CancellationToken cancellationToken);
 
-    ValueTask TerminateAsync(string processName, bool force, CancellationToken cancellationToken);
+    /// <summary>How many processes carry this name.</summary>
+    /// <remarks>
+    /// Asked before the confirmation prompt. Security review 2026-08-17, finding L3: the prompt said
+    /// "Close chrome?" while the terminate killed every process of that name — and on a browser or an
+    /// editor that is routinely a dozen of them. A prompt that understates what it is about to do is
+    /// worse than no prompt, because the user learns to trust it.
+    /// </remarks>
+    ValueTask<int> CountAsync(string processName, CancellationToken cancellationToken);
+
+    /// <summary>Terminate every process of this name, returning how many were acted on.</summary>
+    ValueTask<int> TerminateAsync(string processName, bool force, CancellationToken cancellationToken);
 }
 
 public interface IWindows

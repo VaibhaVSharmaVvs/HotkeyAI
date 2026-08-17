@@ -163,25 +163,67 @@ public sealed partial class PlanExecutor
             argv.Count == 0 ? $"Launched {executable}." : $"Launched {executable} with {argv.Count} argument(s).");
     }
 
+    /// <summary>
+    /// The confirmation question, saying how many and how hard.
+    /// </summary>
+    /// <remarks>
+    /// The count and the tree warning are both there because this is the last thing between a plan
+    /// and unsaved work. <c>force</c> uses <c>Kill(entireProcessTree: true)</c>, which is a very
+    /// different act from asking a window to close, and the old prompt worded them identically apart
+    /// from three words.
+    /// </remarks>
+    private static string Question(string processName, int matching, bool force)
+    {
+        var subject = matching == 1
+            ? $"1 {processName} process"
+            : $"all {matching} {processName} processes";
+
+        return force
+            ? $"Force-close {subject} without saving? This also kills any child processes."
+            : $"Close {subject}?";
+    }
+
     private async Task<(StepOutcome, string)> TerminateAsync(
         TerminateProcessAction action, CancellationToken token)
     {
+        var force = action.Force == true;
+
+        // Counted before asking. Security review 2026-08-17, finding L3: the prompt said "Close
+        // chrome?" while the terminate killed every process of that name — routinely a dozen for a
+        // browser or an editor, and with force it takes each one's child processes too. A prompt that
+        // understates what it is about to do is worse than no prompt, because the user learns to
+        // trust it.
+        var matching = await desktop.Processes
+            .CountAsync(action.ProcessName, token)
+            .ConfigureAwait(false);
+
+        if (matching == 0)
+        {
+            // Nothing to ask about. Asking anyway trains the reflex this prompt depends on.
+            return (StepOutcome.Succeeded, $"No {action.ProcessName} process was running.");
+        }
+
         // Safety control 5. Asked once per action, not once per run, because the user is
         // approving this specific kill rather than the idea of killing things.
-        var approved = await desktop.Prompts.ConfirmAsync(
-            $"Close {action.ProcessName}{(action.Force == true ? " without saving" : "")}?",
-            token).ConfigureAwait(false);
+        var approved = await desktop.Prompts
+            .ConfirmAsync(Question(action.ProcessName, matching, force), token)
+            .ConfigureAwait(false);
 
         if (!approved)
         {
             return (StepOutcome.Failed, "The user declined to close the process.");
         }
 
-        await desktop.Processes
-            .TerminateAsync(action.ProcessName, action.Force == true, token)
+        var closed = await desktop.Processes
+            .TerminateAsync(action.ProcessName, force, token)
             .ConfigureAwait(false);
 
-        return (StepOutcome.Succeeded, $"Terminated {action.ProcessName}.");
+        // The count is reported, not assumed: a process can exit or refuse between the count and the
+        // kill, and "Terminated chrome." said nothing about how much actually happened.
+        return (StepOutcome.Succeeded,
+            closed == 1
+                ? $"Closed 1 {action.ProcessName} process."
+                : $"Closed {closed} {action.ProcessName} processes.");
     }
 
     // ------------------------------- window -------------------------------
