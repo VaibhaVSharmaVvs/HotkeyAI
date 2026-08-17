@@ -79,7 +79,11 @@ public static class WindowsPath
                 continue;
             }
 
-            stack.Add(segment);
+            // Trimmed only after the "." and ".." tests above, never before: Effective leaves those
+            // two alone, but relying on that here would make the order look incidental when it is
+            // load-bearing. Re-audit finding A — the containment check has to compare the path
+            // Windows will act on, which is the one with trailing dots and spaces gone.
+            stack.Add(Effective(segment));
         }
 
         if (stack.Count == 0)
@@ -167,7 +171,39 @@ public static class WindowsPath
     private static string[] Segments(string path) =>
         string.IsNullOrWhiteSpace(path)
             ? []
-            : path.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+            : [.. path.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries).Select(Effective)];
+
+    /// <summary>
+    /// One path segment as Windows will actually interpret it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Win32 strips trailing dots and spaces from a path component before acting on it, and this type
+    /// did not — so the two disagreed about what a path meant. Security re-audit 2026-08-17, finding
+    /// A: <c>Extension("pwn.bat.")</c> returned null and <c>Extension("pwn.bat ")</c> returned
+    /// <c>".bat "</c>, neither of which is in the executable blocklist, while Windows ran
+    /// <c>pwn.bat</c> either way. That defeated the M9 control entirely, and the trailing-space
+    /// spelling also defeated H1's disclosure guarantee: the preview renders
+    /// <c>Open …\pwn.bat  with its default application</c>, and a trailing space is invisible to
+    /// whoever is approving it.
+    /// </para>
+    /// <para>
+    /// Verified against the live filesystem before writing this: <c>target.txt.</c>,
+    /// <c>target.txt </c> and <c>target.txt...</c> all open <c>target.txt</c>.
+    /// </para>
+    /// <para>
+    /// A segment that is nothing *but* dots and spaces is left alone. <c>.</c> and <c>..</c> have
+    /// meanings this type depends on — trimming them to nothing would break traversal detection,
+    /// which is a far worse bug than the one being fixed. (<c>.. </c> was checked too, in case the
+    /// same stripping turned it into a parent reference and opened a hole in the containment check:
+    /// it does not. Windows treats it as an ordinary name, and no such directory exists.)
+    /// </para>
+    /// </remarks>
+    private static string Effective(string segment)
+    {
+        var trimmed = segment.TrimEnd('.', ' ');
+        return trimmed.Length == 0 ? segment : trimmed;
+    }
 
     private static bool IsSeparator(char c) => c is '\\' or '/';
 }
