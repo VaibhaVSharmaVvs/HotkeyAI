@@ -86,7 +86,11 @@ public sealed class SafetyControlTests
             { "type": "notify", "message": "three" }
             """);
 
-        var result = await Executor(desktop).RunAsync(plan, panic.Token);
+        // The describer is the caller's, as of security review 2026-08-17 finding L6: the engine sees
+        // one token and cannot tell the panic key from a Stop button, so it stopped claiming to know.
+        // A caller that does not say gets "Stopped before it finished." rather than a guess.
+        var result = await Executor(desktop)
+            .RunAsync(plan, null, () => "Stopped by the panic key.", panic.Token);
 
         Assert.False(result.Succeeded);
         Assert.Contains("panic key", result.FailureReason, StringComparison.OrdinalIgnoreCase);

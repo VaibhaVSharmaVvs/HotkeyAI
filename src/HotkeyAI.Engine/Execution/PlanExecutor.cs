@@ -44,7 +44,8 @@ public sealed partial class PlanExecutor(
     /// influence the run: anything it throws is swallowed.
     /// </param>
     /// <param name="cancellationToken">
-    /// Cancelled by the panic key. Cancellation is an abort, not a failure to retry.
+    /// Cancelled by the panic key or a Stop button. Cancellation is an abort, not a failure to
+    /// retry.
     /// </param>
     /// <remarks>
     /// A separate overload rather than a third optional parameter, because the analyzer requires
@@ -52,9 +53,29 @@ public sealed partial class PlanExecutor(
     /// two-argument call. The token is deliberately not optional here, so <c>RunAsync(plan)</c>
     /// stays unambiguous.
     /// </remarks>
+    public Task<ExecutionResult> RunAsync(
+        Automation automation,
+        IRunObserver? observer,
+        CancellationToken cancellationToken) =>
+        RunAsync(automation, observer, null, cancellationToken);
+
+    /// <summary>Execute a plan, saying who stopped it if someone does.</summary>
+    /// <param name="automation">A plan that has passed schema and policy validation.</param>
+    /// <param name="observer">Watcher for test-run mode, as above.</param>
+    /// <param name="describeCancellation">
+    /// Asked, at the moment of cancellation, what to write in the transcript. Only the caller knows
+    /// which of the linked sources fired — the engine sees one token.
+    /// <para>
+    /// Security review 2026-08-17, finding L6: the reason was hardcoded to "Stopped by the panic
+    /// key." for any cancellation, so the dashboard's Stop button produced a transcript blaming a
+    /// key the user never pressed — and the transcript is what gets pasted into a repair prompt.
+    /// </para>
+    /// </param>
+    /// <param name="cancellationToken">The panic key, a Stop button, or a host shutting down.</param>
     public async Task<ExecutionResult> RunAsync(
         Automation automation,
         IRunObserver? observer,
+        Func<string>? describeCancellation,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(automation);
@@ -73,11 +94,15 @@ public sealed partial class PlanExecutor(
         }
         catch (OperationCanceledException)
         {
-            // The panic key. Releasing modifiers matters more than the log line: an automation
-            // stopped between key-down and key-up leaves Ctrl or Alt stuck system-wide, which
-            // looks exactly like a hung machine.
+            // Releasing modifiers matters more than the log line: an automation stopped between
+            // key-down and key-up leaves Ctrl or Alt stuck system-wide, which looks exactly like a
+            // hung machine.
             await SafelyReleaseModifiersAsync().ConfigureAwait(false);
-            run.Stop("Stopped by the panic key.", null);
+
+            // Asked rather than assumed. The engine cannot tell the panic key from a Stop button —
+            // they are linked into one token — and guessing put the wrong sentence in the
+            // transcript. Security review 2026-08-17, finding L6.
+            run.Stop(Describe(describeCancellation), null);
             Log(run, null, "abort", StepOutcome.Aborted, Verification.None,
                 "Run cancelled; held modifier keys released.");
         }
@@ -86,7 +111,18 @@ public sealed partial class PlanExecutor(
 #pragma warning restore CA1031
         {
             await SafelyReleaseModifiersAsync().ConfigureAwait(false);
-            run.Stop($"The engine hit an unexpected error: {ex.Message}", null);
+
+            var detail = $"The engine hit an unexpected error: {ex.Message}";
+            run.Stop(detail, null);
+
+            // Logged, like the cancellation path above. Security review 2026-08-17, finding L10: this
+            // stopped the run without writing an entry, so the transcript simply ended — and the
+            // transcript is the whole record of what happened for anyone reading it afterwards or
+            // pasting it into a repair prompt. The exception type is named because "unexpected"
+            // covers everything from a disposed window to a Win32 failure, and which one it was is
+            // the first thing worth knowing.
+            Log(run, null, "abort", StepOutcome.Aborted, Verification.None,
+                $"{detail} ({ex.GetType().Name}) Held modifier keys released.");
         }
 
         return new ExecutionResult(
@@ -94,6 +130,35 @@ public sealed partial class PlanExecutor(
             run.Entries,
             run.StoppedBecause,
             run.FailedActionId);
+    }
+
+    /// <summary>
+    /// Ask the caller why the run stopped, tolerating a caller that cannot say.
+    /// </summary>
+    /// <remarks>
+    /// The delegate runs on the abort path, so it must not be able to replace a clean abort with an
+    /// exception — and the fallback says only what is certainly true. "Stopped by the panic key" was
+    /// the old text, and being specific about a mechanism nobody invoked is worse than being vague.
+    /// </remarks>
+    private static string Describe(Func<string>? describeCancellation)
+    {
+        const string Fallback = "Stopped before it finished.";
+
+        if (describeCancellation is null)
+        {
+            return Fallback;
+        }
+
+        try
+        {
+            return describeCancellation() is { Length: > 0 } reason ? reason : Fallback;
+        }
+#pragma warning disable CA1031 // A description that throws must not become the failure.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return Fallback;
+        }
     }
 
     // ---------------------------------------------------------------------------------

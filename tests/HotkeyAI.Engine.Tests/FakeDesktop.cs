@@ -116,8 +116,22 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
         }
     }
 
+    /// <summary>
+    /// Set to make the process check throw, simulating the desktop layer failing outright.
+    /// </summary>
+    /// <remarks>
+    /// A hook here rather than on <c>OnEffect</c> because it has to fire somewhere the executor's
+    /// per-action catch cannot see: an exception from a dispatch is reported as one failed step, by
+    /// design, and never reaches the run-level handler that security review 2026-08-17 finding L10 is
+    /// about. Verification runs outside that guard, so a postcondition asking about a process is the
+    /// shortest honest route to it.
+    /// </remarks>
+    public Exception? ProcessCheckThrows { get; set; }
+
     public ValueTask<bool> IsRunningAsync(string processName, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(RunningProcesses.Contains(processName));
+        ProcessCheckThrows is { } boom
+            ? throw boom
+            : ValueTask.FromResult(RunningProcesses.Contains(processName));
 
     public async ValueTask TerminateAsync(
         string processName, bool force, CancellationToken cancellationToken)
