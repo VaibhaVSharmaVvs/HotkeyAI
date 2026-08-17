@@ -10,5 +10,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/HotkeyAI.Core.Tests/HotkeyAI.Core.Tests.csproj" />
     <Project Path="tests/HotkeyAI.Engine.Tests/HotkeyAI.Engine.Tests.csproj" />
+    <Project Path="tests/HotkeyAI.Windows.Tests/HotkeyAI.Windows.Tests.csproj" />
   </Folder>
 </Solution>

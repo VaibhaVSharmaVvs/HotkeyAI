@@ -51,6 +51,50 @@ internal static partial class Native
     [LibraryImport("user32.dll")]
     internal static partial nint GetForegroundWindow();
 
+    /// <summary>Which control has the keyboard focus, among other UI state of one thread.</summary>
+    /// <remarks>
+    /// The foreground window is not what receives typing — the focused child control is, and only
+    /// this call names it. Security review 2026-08-17, finding M6, needs it to see whether that
+    /// control carries the password style.
+    /// </remarks>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
+
+    /// <summary>
+    /// State of one thread's UI. <c>Size</c> must be set before the call or it fails.
+    /// </summary>
+    /// <remarks>
+    /// Declared in full rather than trimmed to the one field needed, because the API validates
+    /// <c>cbSize</c> against the real structure and a short one is simply refused.
+    /// </remarks>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct GuiThreadInfo
+    {
+        public int Size;
+        public uint Flags;
+        public nint Active;
+        public nint Focus;
+        public nint Capture;
+        public nint MenuOwner;
+        public nint MoveSize;
+        public nint Caret;
+        public Rect CaretRect;
+    }
+
+    internal const int GWL_STYLE = -16;
+
+    /// <summary>Edit control style: the text is masked.</summary>
+    internal const int ES_PASSWORD = 0x0020;
+
+    /// <remarks>
+    /// The 64-bit entry point, and the only one that exists in a 64-bit process — <c>GetWindowLongW</c>
+    /// is present too but truncates. The style bits fit in 32 bits either way; this is about being
+    /// spelled correctly rather than about the width.
+    /// </remarks>
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    internal static partial nint GetWindowLongPtr(nint window, int index);
+
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool SetForegroundWindow(nint window);

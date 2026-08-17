@@ -66,7 +66,7 @@ public sealed class WindowsInput : IInput
             return ValueTask.FromResult(InputHazard.CredentialPrompt);
         }
 
-        Native.GetWindowThreadProcessId(window, out var processId);
+        var thread = Native.GetWindowThreadProcessId(window, out var processId);
 
         if (Integrity.IsHigherThanUs(processId))
         {
@@ -76,7 +76,79 @@ public sealed class WindowsInput : IInput
             return ValueTask.FromResult(InputHazard.ElevatedWindow);
         }
 
+        if (FocusIsMasked(thread))
+        {
+            return ValueTask.FromResult(InputHazard.CredentialPrompt);
+        }
+
         return ValueTask.FromResult(InputHazard.None);
+    }
+
+    /// <summary>Edit-control classes whose password style is worth reading.</summary>
+    /// <remarks>
+    /// The style bit is only <c>ES_PASSWORD</c> on an edit control; <c>0x0020</c> means something
+    /// else entirely on a button or a list box, so the class has to be established first or the
+    /// check invents password fields where there are none.
+    /// </remarks>
+    private static readonly HashSet<string> EditClasses =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Edit", "RichEdit", "RichEdit20A", "RichEdit20W", "RichEdit50W", "RICHEDIT60W",
+        };
+
+    /// <summary>
+    /// Whether a window class is an edit control, superclassed or not.
+    /// </summary>
+    /// <remarks>
+    /// The second half matters more than the first. A WinForms <c>TextBox</c> is a real edit control
+    /// with the real <c>ES_PASSWORD</c> style, but WinForms superclasses it and the class name comes
+    /// back as <c>WindowsForms10.EDIT.app.0.1405e41_r25_ad1</c> — so an exact-match list finds a
+    /// plain Win32 dialog's password box and misses every managed one, which is most of them. This
+    /// was found by probing a live masked TextBox rather than by reading, and it is the reason the
+    /// probe was worth writing.
+    /// </remarks>
+    internal static bool IsEditControl(string className) =>
+        EditClasses.Contains(className)
+        || (className.StartsWith("WindowsForms", StringComparison.OrdinalIgnoreCase)
+            && className.Split('.') is [_, var control, ..]
+            && EditClasses.Contains(control));
+
+    /// <summary>
+    /// Whether the focused control masks what is typed into it.
+    /// </summary>
+    /// <remarks>
+    /// Security review 2026-08-17, finding M6. PLAN.md control 3 claimed a password-style check that
+    /// did not exist: the code tested two window class names and the integrity level, so the
+    /// foreground being a credential *dialog* was caught while a password *field* inside an ordinary
+    /// window was not.
+    /// <para>
+    /// The foreground window is not what receives typing — the focused child control is — so this
+    /// asks the foreground thread which control has the focus and reads its style. That covers Win32
+    /// and WinForms. It does not cover WPF, Chromium or Electron, where the focused element is not a
+    /// window at all and only UI Automation can see it; PLAN.md control 3 now says so rather than
+    /// implying otherwise, because a control described more broadly than it is implemented is worse
+    /// than a narrow one honestly described.
+    /// </para>
+    /// </remarks>
+    private static bool FocusIsMasked(uint foregroundThread)
+    {
+        var info = new Native.GuiThreadInfo();
+        info.Size = Marshal.SizeOf<Native.GuiThreadInfo>();
+
+        if (!Native.GetGUIThreadInfo(foregroundThread, ref info) || info.Focus == 0)
+        {
+            // No focused control, or a thread that will not answer — which is the ordinary case for
+            // a Chromium window. Not a hazard on its own: reporting one here would refuse input to
+            // every browser.
+            return false;
+        }
+
+        if (!IsEditControl(Native.GetWindowClass(info.Focus)))
+        {
+            return false;
+        }
+
+        return ((int)Native.GetWindowLongPtr(info.Focus, Native.GWL_STYLE) & Native.ES_PASSWORD) != 0;
     }
 
     public ValueTask SendChordAsync(

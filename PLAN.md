@@ -425,8 +425,17 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
    field → reject. `launch_process` must use `resolve` against the app registry or an absolute
    path under a configured allowed root. No shell primitive exists to abuse.
 3. **Sensitive-window guard.** Before any `send_keys` / `type_text`, check the foreground
-   window: refuse if it is a UAC consent dialog, a credential prompt, or a control with the
-   password style. Detect and report integrity mismatch rather than failing silently.
+   window: refuse if it is a UAC consent dialog, a credential prompt, or a focused edit control
+   carrying the `ES_PASSWORD` style. Detect and report integrity mismatch rather than failing
+   silently.
+
+   The password-style check reads the focused control's style through `GetGUIThreadInfo`, so it
+   covers Win32 and WinForms — superclassed classes included. It does **not** cover WPF,
+   Chromium or Electron password inputs, where the focused element is not a window at all and
+   only UI Automation can see it; UIA would mean a framework reference this project deliberately
+   avoids, and a cross-process call on the hotkey path. Stated here rather than left implied,
+   because a control described more broadly than it is implemented is worse than a narrow one
+   honestly described (security review 2026-08-17, finding M6).
 4. **Trust-on-first-use for automation files.** Store under `%LOCALAPPDATA%` with a per-user
    ACL and HMAC each file with a key in DPAPI. An unsigned or changed file is **loaded
    disabled and marked unverified**, never refused outright, and never run until the user has
