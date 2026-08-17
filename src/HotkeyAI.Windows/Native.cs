@@ -169,6 +169,39 @@ internal static partial class Native
     [LibraryImport("user32.dll")]
     internal static partial short GetAsyncKeyState(int key);
 
+    // ------------------------------- real paths -------------------------------
+
+    /// <summary>
+    /// Opens a path only to ask the kernel what it is, so the handle wants no access rights.
+    /// </summary>
+    /// <remarks>
+    /// <c>FILE_FLAG_BACKUP_SEMANTICS</c> is what allows a *directory* to be opened this way, which
+    /// is required: a junction sits on a directory, and the interesting case is a junction partway
+    /// along a path rather than at its end.
+    /// </remarks>
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial nint CreateFile(
+        string path,
+        uint access,
+        uint share,
+        nint security,
+        uint disposition,
+        uint flags,
+        nint template);
+
+    /// <remarks>
+    /// The buffer is a pointer to UTF-16 code units, typed <c>ref ushort</c>. Three narrower
+    /// spellings all fail: a StringBuilder the source generator cannot marshal at all, a
+    /// <c>char[]</c> needs runtime marshalling disabled assembly-wide, and even <c>ref char</c> is
+    /// rejected because <c>char</c>'s width is a marshalling decision rather than a fixed size.
+    /// <c>ushort</c> is unambiguously two bytes, so nothing has to be decided. The caller wants the
+    /// returned length regardless, to know how much of the buffer is real.
+    /// </remarks>
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true)]
+    internal static partial uint GetFinalPathNameByHandle(
+        nint file, ref ushort path, uint length, uint flags);
+
     // ------------------------------- integrity -------------------------------
 
     [LibraryImport("kernel32.dll", SetLastError = true)]

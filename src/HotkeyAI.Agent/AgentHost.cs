@@ -142,7 +142,7 @@ public static class AgentHost
               + "way to stop them from the keyboard; quit from the tray instead.");
 
         var desktop = new WindowsDesktop(new WpfPrompts());
-        var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots));
+        var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots, new WindowsRealPath()));
         // RunContinuationsAsynchronously matters here. Quit is signalled from the tray menu's
         // click handler, which runs on the UI thread; without this the whole shutdown sequence —
         // unregistering hotkeys, joining the pump, disposing the tray — would run inline on that

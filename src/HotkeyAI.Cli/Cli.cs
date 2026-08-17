@@ -234,7 +234,7 @@ public static class Cli
                 : (IPrompts)new ConsolePrompts();
 
             var desktop = new WindowsDesktop(prompts);
-            var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots));
+            var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots, new WindowsRealPath()));
             var result = await executor.RunAsync(automation, panic.Token).ConfigureAwait(false);
 
             Console.WriteLine(new string('-', 60));
