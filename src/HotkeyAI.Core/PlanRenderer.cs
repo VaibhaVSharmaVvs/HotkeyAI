@@ -85,6 +85,13 @@ public static class PlanRenderer
             text.AppendLine(CultureInfo.InvariantCulture,
                 $"{indent}{number}.{id} {DescribeAction(action)}");
 
+            // Before the comment and the postcondition, because it is the part of the step the
+            // approver most needs to read.
+            if (Payload(action) is { } payload)
+            {
+                RenderPayload(payload, text, indent);
+            }
+
             if (!string.IsNullOrWhiteSpace(action.Comment))
             {
                 text.AppendLine(CultureInfo.InvariantCulture, $"{indent}    note: {action.Comment}");
@@ -158,7 +165,9 @@ public static class PlanRenderer
             + (a.Repeat is > 1 ? $", {a.Repeat} times" : "")
             + " in the focused window",
 
-        TypeTextAction a => $"Type \"{Ellipsis(a.Text)}\" into the focused window",
+        TypeTextAction a => Inline(a.Text) is { } typed
+            ? $"Type \"{typed}\" into the focused window"
+            : $"Type {a.Text.Length} characters into the focused window (shown below)",
 
         SendAppCommandAction a =>
             $"Send the system {Wire(a.Command).Replace('_', ' ')} command",
@@ -174,7 +183,9 @@ public static class PlanRenderer
 
         OpenPathAction a => $"Open {a.Path} with its default application",
 
-        SetClipboardAction a => $"Copy \"{Ellipsis(a.Text)}\" to the clipboard",
+        SetClipboardAction a => Inline(a.Text) is { } copied
+            ? $"Copy \"{copied}\" to the clipboard"
+            : $"Copy {a.Text.Length} characters to the clipboard (shown below)",
         GetClipboardAction a => $"Read the clipboard into ${{{a.Into}}}",
 
         ShowPickerAction a =>
@@ -217,8 +228,8 @@ public static class PlanRenderer
                 $"\"{e.ProcessName}\" owns the foreground window{within}",
             ClipboardMatchesExpectation e =>
                 e.Exactly is not null
-                    ? $"the clipboard equals \"{Ellipsis(e.Exactly)}\"{within}"
-                    : $"the clipboard contains \"{Ellipsis(e.Contains ?? "")}\"{within}",
+                    ? $"the clipboard equals \"{e.Exactly}\"{within}"
+                    : $"the clipboard contains \"{e.Contains ?? ""}\"{within}",
             _ => throw new NotSupportedException(
                 $"No rendering for postcondition {expectation.GetType().Name}."),
         };
@@ -331,8 +342,67 @@ public static class PlanRenderer
     private static string Wire<TEnum>(TEnum value)
         where TEnum : struct, Enum => WireName.Of(value);
 
-    private static string Ellipsis(string text, int max = 60) =>
-        text.Length <= max ? text : string.Concat(text.AsSpan(0, max - 1), "…");
+    /// <summary>Longest payload shown on the step line itself, rather than in a block below.</summary>
+    private const int InlineLimit = 60;
+
+    /// <summary>
+    /// A payload short and plain enough to sit on the step line, or null if it needs a block.
+    /// </summary>
+    /// <remarks>
+    /// Never a truncation. This used to elide anything past sixty characters, which made the
+    /// approval preview unsound: the executor deliberately does not log typed text — correct, it
+    /// could be a password — so a longer payload appeared in full nowhere, and the human approving
+    /// the plan was shown an innocuous opening while the rest of it went unread. The whole safety
+    /// model rests on that person seeing what will happen.
+    /// </remarks>
+    private static string? Inline(string text) =>
+        text.Length <= InlineLimit && text.AsSpan().IndexOfAny('\n', '\r', '\t') < 0
+            ? text
+            : null;
+
+    /// <summary>The full text an action will type or copy, or null if it carries none.</summary>
+    private static string? Payload(HotkeyAction action) => action switch
+    {
+        TypeTextAction a => Inline(a.Text) is null ? a.Text : null,
+        SetClipboardAction a => Inline(a.Text) is null ? a.Text : null,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Characters that turn typed text into something a shell will act on.
+    /// </summary>
+    /// <remarks>
+    /// A newline is the important one: typed into a terminal it is Enter, so a payload that looks
+    /// like a note becomes a command. This is a disclosure, not a refusal — plenty of legitimate
+    /// automations type multi-line text — but it belongs in front of the person approving it.
+    /// </remarks>
+    private static readonly System.Buffers.SearchValues<char> ShellShaped =
+        System.Buffers.SearchValues.Create("\n\r|&;`$><");
+
+    /// <summary>Render a payload as an indented block, in full, with a note if it is dangerous.</summary>
+    private static void RenderPayload(string payload, StringBuilder text, string indent)
+    {
+        text.AppendLine(CultureInfo.InvariantCulture,
+            $"{indent}    text ({payload.Length} characters):");
+
+        // Real line breaks rather than an escape, so a payload that will press Enter looks like it
+        // presses Enter — one output line per line of payload, and no hard wrapping. Wrapping at a
+        // fixed column split URLs mid-host, which on a disclosure surface is worse than a long
+        // line: "attacker.example" broken across two rows can be skimmed as something else.
+        // Consoles and the review dialog both wrap on their own.
+        foreach (var line in payload.ReplaceLineEndings("\n").Split('\n'))
+        {
+            text.AppendLine(CultureInfo.InvariantCulture, $"{indent}    | {line}");
+        }
+
+        if (payload.AsSpan().ContainsAny(ShellShaped))
+        {
+            const string warning = "! This text contains newlines or shell characters. Typed into "
+                + "a terminal it would run as commands.";
+
+            text.AppendLine(CultureInfo.InvariantCulture, $"{indent}    {warning}");
+        }
+    }
 
     private static IEnumerable<HotkeyAction> Flatten(IEnumerable<HotkeyAction> actions)
     {
