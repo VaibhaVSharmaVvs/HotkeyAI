@@ -491,6 +491,16 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
    local pipe. Before V2's API mode ships, add path/title redaction at the boundary — prompts
    and repair bundles will otherwise carry file paths and window titles.
 
+   Retention is implemented, redaction is not, and the split is deliberate. Logs are pruned after
+   14 days and a runaway day rolls at 8 MB instead of growing without limit (security review
+   2026-08-17, finding L2) — two weeks covers both reasons anyone opens a log, and nothing older
+   has a reader. What is still logged in clear is window titles and picked paths. Redacting those
+   would gut the log's only purpose, which is telling someone why an automation did the wrong
+   thing; the answer is the boundary redaction above, at the point where the data would leave the
+   machine, not at the point where it is written for the person sitting at it. Secrets are a
+   different question and already handled: nothing from the clipboard or a prompt reaches a log
+   line at all (control 6).
+
 If this is ever shared with colleagues at Solulever, re-open items 4, 6 and 7 plus code
 signing and a Scrut.io control mapping before distribution — window titles and file paths in
 prompts and logs are PII/confidential-adjacent under SOC2/ISO 27001 obligations.

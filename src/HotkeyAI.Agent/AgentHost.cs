@@ -123,6 +123,15 @@ public static class AgentHost
 
         ReportStoreAcl();
 
+        // Security review 2026-08-17, finding L2. Logs held window titles and file paths for as long
+        // as the machine lasted; two weeks covers every reason anyone opens one.
+        if (LogRetention.Prune() is > 0 and var removed)
+        {
+            AgentLog.Line(
+                $"[logs] removed {removed} log file(s) past the "
+                + $"{LogRetention.Window.TotalDays:F0}-day retention.");
+        }
+
         // Both this and the CLI open the store through one factory. Assembling it in two places
         // is how the CLI ended up blind to two of the four storages.
         var policy = AgentStore.Policy;
