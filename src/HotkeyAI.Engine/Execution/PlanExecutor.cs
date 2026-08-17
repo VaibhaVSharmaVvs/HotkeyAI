@@ -62,7 +62,7 @@ public sealed partial class PlanExecutor(
         var run = new RunState(
             new Variables(automation.Variables),
             [],
-            Stopwatch.StartNew())
+            clock)
         {
             Observer = observer,
         };
@@ -155,11 +155,38 @@ public sealed partial class PlanExecutor(
         // one moment someone watching most needs to know what they are waiting for.
         run.Announce(type, action.Id);
 
-        var timeout = action is VerifiableAction { TimeoutMs: { } ms }
+        var asked = action is VerifiableAction { TimeoutMs: { } ms }
             ? TimeSpan.FromMilliseconds(ms)
             : limits.DefaultActionTimeout;
 
-        // Two sources: the per-action timeout, and the outer token the panic key cancels.
+        // Whichever runs out first: the action's own timeout, or what is left of the run's budget.
+        //
+        // Security review 2026-08-17, finding M5. The wall-clock cap was only evaluated *between*
+        // actions, so a single action could run for its own timeoutMs — bounded by policy at
+        // 300 000 ms, two and a half times the documented 120 s cap. The panic key still worked,
+        // because cancellation is cooperative and honoured throughout, but the engine's own escape
+        // hatch did not: PLAN.md describes the cap as being there for when the user cannot get to
+        // the keyboard, and it was not bounding the run at all.
+        var remaining = limits.MaxDuration - run.Elapsed;
+        var timeout = remaining < asked ? remaining : asked;
+
+        if (timeout <= TimeSpan.Zero)
+        {
+            // The budget is already spent. CheckLimits catches this before most actions, but an
+            // action reached with nothing left must not be given an immediate deadline and reported
+            // as a timeout of its own — that would blame the step for the run's overrun.
+            run.Stop(
+                $"Time cap reached ({limits.MaxDuration.TotalSeconds:F0}s). The plan was stopped "
+                + "before it could hold the desktop.",
+                action.Id);
+
+            Log(run, action.Id, type, StepOutcome.Aborted, Verification.None,
+                "Not started: the run's time cap was already reached.");
+
+            return;
+        }
+
+        // Two sources: the effective timeout above, and the outer token the panic key cancels.
         // Linked so either stops the action, but the catch below can still tell them apart —
         // a timeout fails one step, the panic key aborts the run.
         using var deadline = new CancellationTokenSource(timeout, clock);
@@ -180,8 +207,26 @@ public sealed partial class PlanExecutor(
         }
         catch (OperationCanceledException)
         {
-            outcome = StepOutcome.Failed;
-            detail = $"Timed out after {timeout.TotalMilliseconds:F0} ms.";
+            // Two different events wear the same exception, and they deserve different words. An
+            // action that outran its own timeout is one failed step; an action cut short because
+            // the run's budget expired is the whole run ending, and blaming the step for that would
+            // send someone looking at the wrong thing.
+            if (timeout < asked)
+            {
+                outcome = StepOutcome.Aborted;
+                detail =
+                    $"Time cap reached ({limits.MaxDuration.TotalSeconds:F0}s) while this action "
+                    + "was running. The plan was stopped before it could hold the desktop.";
+
+                // The tail of this method stops the run for an Aborted outcome, so no Stop here —
+                // and the outcome matters beyond the message: Aborted is not subject to
+                // onError: continue, which would otherwise let a plan step straight past the cap.
+            }
+            else
+            {
+                outcome = StepOutcome.Failed;
+                detail = $"Timed out after {timeout.TotalMilliseconds:F0} ms.";
+            }
         }
 #pragma warning disable CA1031 // One bad action must not abort the whole agent.
         catch (Exception ex)
@@ -241,9 +286,16 @@ public sealed partial class PlanExecutor(
             return (false, why);
         }
 
-        var window = expect.WithinMs is { } ms
+        var asked = expect.WithinMs is { } ms
             ? TimeSpan.FromMilliseconds(ms)
             : limits.DefaultVerificationTimeout;
+
+        // Clipped to the run's remaining budget, for the same reason the action timeout above is:
+        // polling is time spent inside a step, and the wall-clock cap is only consulted between
+        // them. withinMs goes up to 60 000 ms, so a plan whose steps each verify slowly could sit
+        // well past the cap without any single number looking unreasonable.
+        var remaining = limits.MaxDuration - run.Elapsed;
+        var window = remaining < asked ? remaining : asked;
 
         var deadline = clock.GetUtcNow() + window;
 
@@ -258,9 +310,11 @@ public sealed partial class PlanExecutor(
 
             if (clock.GetUtcNow() >= deadline)
             {
-                return (false,
-                    $"Postcondition not met within {window.TotalMilliseconds:F0} ms: "
-                    + Core.PlanRenderer.Describe(expect));
+                return (false, window < asked
+                    ? $"Time cap reached ({limits.MaxDuration.TotalSeconds:F0}s) while waiting "
+                      + "for: " + Core.PlanRenderer.Describe(expect)
+                    : $"Postcondition not met within {window.TotalMilliseconds:F0} ms: "
+                      + Core.PlanRenderer.Describe(expect));
             }
 
             await Task.Delay(limits.PollInterval, clock, cancellationToken).ConfigureAwait(false);
@@ -419,9 +473,20 @@ public sealed partial class PlanExecutor(
     private static string Discriminator(HotkeyAction action) =>
         Discriminators.TryGetValue(action.GetType(), out var name) ? name : action.GetType().Name;
 
+    /// <summary>
+    /// One run's mutable state, including the clock the wall-clock cap is measured against.
+    /// </summary>
+    /// <remarks>
+    /// The clock is the executor's <see cref="TimeProvider"/>, not a <see cref="Stopwatch"/>, and the
+    /// distinction is what makes the cap testable. It used to be a Stopwatch while every deadline in
+    /// this file came from the TimeProvider, so a test could move the clock and the cap would not
+    /// notice — which is why the 120 s cap had no test at all before security review 2026-08-17.
+    /// </remarks>
     private sealed record RunState(
-        Variables Variables, List<LogEntry> Entries, Stopwatch Timer)
+        Variables Variables, List<LogEntry> Entries, TimeProvider Clock)
     {
+        private readonly long started = Clock.GetTimestamp();
+
         public int Steps { get; set; }
 
         public string? StoppedBecause { get; private set; }
@@ -430,7 +495,7 @@ public sealed partial class PlanExecutor(
 
         public IRunObserver? Observer { get; init; }
 
-        public TimeSpan Elapsed => Timer.Elapsed;
+        public TimeSpan Elapsed => Clock.GetElapsedTime(started);
 
         public void Stop(string reason, string? actionId)
         {
