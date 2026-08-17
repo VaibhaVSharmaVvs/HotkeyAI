@@ -232,6 +232,15 @@ public sealed partial class PlanExecutor(
     private async Task<(bool Passed, string Detail)> VerifyAsync(
         Postcondition expect, RunState run, CancellationToken cancellationToken)
     {
+        // Checked before polling rather than by waiting out the window. A postcondition whose
+        // comparison value interpolated to nothing can never pass, so spending five seconds
+        // discovering that — and then reporting a generic miss — tells the user neither what
+        // happened nor why.
+        if (Vacuous(expect, run) is { } why)
+        {
+            return (false, why);
+        }
+
         var window = expect.WithinMs is { } ms
             ? TimeSpan.FromMilliseconds(ms)
             : limits.DefaultVerificationTimeout;
@@ -289,10 +298,54 @@ public sealed partial class PlanExecutor(
         _ => false,
     };
 
+    /// <summary>
+    /// Why this postcondition could never hold, or null if it is a real question.
+    /// </summary>
+    /// <remarks>
+    /// Security review 2026-08-17, finding M1. An unset variable interpolates to the empty string,
+    /// and an empty comparison value turns a check into a tautology or an impossibility depending
+    /// on which one it is. Either way the plan asked a question it cannot get a meaningful answer
+    /// to, and saying so beats reporting a verdict that means nothing.
+    /// <para>
+    /// Named after the fault rather than the fix, because the underlying cause is almost always a
+    /// variable the plan never wrote — which the policy validator now also catches inside
+    /// expectations (finding M2), so a plan reaching this at run time is the rarer case of a
+    /// variable that was declared and assigned but ended up empty.
+    /// </para>
+    /// </remarks>
+    private static string? Vacuous(Postcondition expect, RunState run) => expect switch
+    {
+        ClipboardMatchesExpectation { Exactly: null } e
+            when run.Variables.Interpolate(e.Contains).Length == 0 =>
+            "The text to look for in the clipboard interpolated to nothing, so this check could "
+            + "not pass or fail on its own terms. A variable it names was never given a value.",
+
+        PathExistsExpectation e when run.Variables.Interpolate(e.Path).Length == 0 =>
+            "The path to check interpolated to nothing. A variable it names was never given a "
+            + "value.",
+
+        _ => null,
+    };
+
+    /// <summary>
+    /// Whether the clipboard satisfies a <c>clipboard_matches</c> expectation.
+    /// </summary>
+    /// <remarks>
+    /// An empty needle fails rather than passes. Security review 2026-08-17, finding M1: an unset
+    /// variable interpolates to the empty string, so <c>contains: "${ghost}"</c> became
+    /// <c>Contains("")</c> — true of every string ever — and the step was reported as
+    /// <c>(verified)</c> while verifying nothing. That is the one failure the engine's honesty
+    /// story cannot absorb: the entire point of counting unverified actions is that "it ran" and
+    /// "it worked" stay separate claims, and a vacuous check silently upgrades the weaker one.
+    /// <para>
+    /// Deliberately not treated as "no expectation given" either. The plan asked for a check, so
+    /// the check has to have an answer, and the honest answer is no.
+    /// </para>
+    /// </remarks>
     private static bool Matches(string actual, string exact, string contains, bool exactly) =>
         exactly
             ? string.Equals(actual, exact, StringComparison.Ordinal)
-            : actual.Contains(contains, StringComparison.Ordinal);
+            : contains.Length > 0 && actual.Contains(contains, StringComparison.Ordinal);
 
     private async Task<bool> ExistsWithinRootsAsync(string path, CancellationToken cancellationToken)
     {

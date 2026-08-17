@@ -318,6 +318,31 @@ public static partial class PolicyValidator
             // Writes happen after reads within the same action: an action never reads the
             // variable it is about to write.
             RecordWrites(path, action, declared, assigned, loopScoped, errors);
+
+            // The postcondition, though, runs after the action succeeded — so it may read what the
+            // action just wrote, and is checked on this side of the write.
+            foreach (var (name, property, field) in ExpectReferences(action))
+            {
+                if (!declared.TryGetValue(name, out var type))
+                {
+                    errors.Add(Error(
+                        $"{path}/{field}",
+                        $"${{{name}}} is not declared. Add it to \"variables\" with its type."));
+                    continue;
+                }
+
+                if (!assigned.Contains(name))
+                {
+                    errors.Add(Error(
+                        $"{path}/{field}",
+                        $"${{{name}}} is read before anything assigns it."));
+                }
+
+                if (property is not null)
+                {
+                    CheckProperty(path, field, name, property, type, errors);
+                }
+            }
         }
     }
 
@@ -472,8 +497,30 @@ public static partial class PolicyValidator
     /// variable rather than interpolating one (<c>into</c>, <c>source</c>) are excluded; they
     /// are handled as writes.
     /// </remarks>
+    /// <summary>Variables an action reads to do its work, before it writes anything.</summary>
     private static IEnumerable<(string Name, string? Property, string Field)> References(
-        HotkeyAction action)
+        HotkeyAction action) => References(action, expectations: false);
+
+    /// <summary>
+    /// Variables an action's postcondition reads, which happens after its own write.
+    /// </summary>
+    /// <remarks>
+    /// Split out because sequence matters and the two halves sit on opposite sides of the write.
+    /// An action never reads the variable it is about to write — but its <c>expect</c> runs once the
+    /// action has succeeded, so <c>get_clipboard</c> into <c>got</c> with
+    /// <c>expect: clipboard_matches contains ${got}</c> is not only legal, it is the natural way to
+    /// verify a clipboard write. Checking both halves before the write reported that as reading a
+    /// variable before anything assigned it.
+    /// <para>
+    /// Found by fixing M2: once expectations were visible to the dataflow walk at all, this
+    /// ordering question appeared with them.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<(string Name, string? Property, string Field)> ExpectReferences(
+        HotkeyAction action) => References(action, expectations: true);
+
+    private static IEnumerable<(string Name, string? Property, string Field)> References(
+        HotkeyAction action, bool expectations)
     {
         var naming = new[] { "Into", "Source", "ItemVariable", "Variable" };
 
@@ -481,6 +528,12 @@ public static partial class PolicyValidator
             BindingFlags.Public | BindingFlags.Instance))
         {
             if (naming.Contains(property.Name, StringComparer.Ordinal))
+            {
+                continue;
+            }
+
+            if (string.Equals(property.Name, nameof(VerifiableAction.Expect), StringComparison.Ordinal)
+                != expectations)
             {
                 continue;
             }
@@ -500,17 +553,61 @@ public static partial class PolicyValidator
         }
     }
 
+    /// <summary>
+    /// Every string an action carries, however deeply nested.
+    /// </summary>
+    /// <remarks>
+    /// Security review 2026-08-17, finding M2. This handled <c>string</c>,
+    /// <c>IEnumerable&lt;string&gt;</c> and <see cref="WindowSelector"/>, and everything else fell
+    /// through to nothing — so a <c>${...}</c> inside an <c>expect</c> or a predicate was invisible
+    /// to the declaration and assignment checks, and a plan reading a variable nothing ever wrote
+    /// validated clean. That is what made finding M1 reachable from a valid plan: the executor then
+    /// interpolated the unwritten variable to an empty string and a vacuous check reported
+    /// "verified".
+    /// <para>
+    /// It is a false negative in the layer whose own comment says reflection was chosen over a
+    /// switch precisely because "a missed case is a silent false negative". The fix keeps that
+    /// spirit — a reflective walk over any nested DSL record — so a primitive added later is
+    /// covered without anyone remembering to come back here.
+    /// </para>
+    /// </remarks>
     private static IEnumerable<string> Strings(object? value) => value switch
     {
+        null => [],
         string text => [text],
         IEnumerable<string> many => many,
-        WindowSelector selector => new[]
-            {
-                selector.TitleContains, selector.TitleRegex,
-                selector.ProcessName, selector.ClassName,
-            }.OfType<string>(),
+
+        // The DSL's own nested record types: postconditions, conditions, predicates, selectors.
+        // Walked by reflection rather than named one by one, so this does not have to be revisited
+        // every time the schema grows.
+        Postcondition or Condition or WindowSelector => Nested(value),
+
+        // A composite condition holds a list of more conditions.
+        IEnumerable<Condition> conditions => conditions.SelectMany(Strings),
+
         _ => [],
     };
+
+    /// <summary>Reflect over a DSL record's own properties and gather every string inside.</summary>
+    private static IEnumerable<string> Nested(object value) =>
+        value.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0)
+            .SelectMany(p => Strings(SafeRead(p, value)));
+
+    private static object? SafeRead(PropertyInfo property, object target)
+    {
+        try
+        {
+            return property.GetValue(target);
+        }
+#pragma warning disable CA1031 // A property that throws must not fail validation of the whole plan.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
+    }
 
     private static string JsonName(PropertyInfo property) =>
         property.GetCustomAttribute<System.Text.Json.Serialization.JsonPropertyNameAttribute>()
