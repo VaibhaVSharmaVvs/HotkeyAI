@@ -515,4 +515,219 @@ internal static class Fluent
         Background = Palette.Edge,
         Margin = new Thickness(0, 10, 0, 10),
     };
+
+    // ----------------------------- dialogs -----------------------------
+
+    /// <summary>
+    /// A dialog wearing the same clothes as the dashboard.
+    /// </summary>
+    /// <remarks>
+    /// One factory because there are five of these, and five hand-built windows drifted apart
+    /// exactly as you would expect: different paddings, different button chrome, and a title bar
+    /// that was light on whichever one was written last. Anything opened from the dashboard
+    /// should look like it came from the same application.
+    /// </remarks>
+    internal static Window Dialog(Window owner, string title, double width, double height)
+    {
+        var window = new Window
+        {
+            Title = title,
+            Width = width,
+            Height = height,
+            Owner = owner,
+            Icon = TrayIcon.WindowIcon(),
+            Background = Palette.Surface,
+            Foreground = Palette.Text,
+            FontFamily = new FontFamily("Segoe UI"),
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+
+        window.SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
+            new System.Windows.Interop.WindowInteropHelper(window).Handle);
+
+        return window;
+    }
+
+    /// <summary>The heading inside a dialog, above whatever it is asking about.</summary>
+    internal static TextBlock Heading(string text) => new()
+    {
+        Text = text,
+        FontSize = 19,
+        FontWeight = FontWeights.SemiBold,
+        Foreground = Palette.Text,
+        TextWrapping = TextWrapping.Wrap,
+    };
+
+    /// <summary>Explanatory text: smaller, quieter, and allowed to wrap.</summary>
+    internal static TextBlock Caption(string text) => new()
+    {
+        Text = text,
+        FontSize = 12.5,
+        Foreground = Palette.Muted,
+        TextWrapping = TextWrapping.Wrap,
+    };
+
+    /// <summary>
+    /// The one button in a dialog that commits to something.
+    /// </summary>
+    /// <remarks>
+    /// Filled rather than outlined, and there is never more than one: approving a plan, restoring
+    /// a version and replacing an automation are all irreversible enough that the button doing
+    /// them should not look like the button beside it that closes the window.
+    /// </remarks>
+    internal static Button Primary(string text, string glyph, Action onClick)
+    {
+        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        content.Children.Add(Glyph(glyph, 14, Palette.Surface));
+        content.Children.Add(new TextBlock
+        {
+            Text = text,
+            Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 12.5,
+            FontWeight = FontWeights.SemiBold,
+        });
+
+        var button = new Button
+        {
+            Content = content,
+            Foreground = Palette.Surface,
+            Padding = new Thickness(16, 8, 18, 8),
+            Margin = new Thickness(8, 0, 0, 0),
+            Cursor = Cursors.Hand,
+            Template = FilledButtonTemplate(),
+        };
+
+        button.Click += (_, _) => onClick();
+        return button;
+    }
+
+    private static ControlTemplate FilledButtonTemplate()
+    {
+        var border = new FrameworkElementFactory(typeof(Border), "bg");
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetValue(Border.BackgroundProperty, Palette.Accent);
+        border.SetBinding(Border.PaddingProperty,
+            new System.Windows.Data.Binding(nameof(Control.Padding))
+            {
+                RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent,
+            });
+
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        border.AppendChild(presenter);
+
+        var template = new ControlTemplate(typeof(ButtonBase)) { VisualTree = border };
+
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(UIElement.OpacityProperty, 0.88, "bg"));
+        template.Triggers.Add(hover);
+
+        var pressed = new Trigger { Property = ButtonBase.IsPressedProperty, Value = true };
+        pressed.Setters.Add(new Setter(UIElement.OpacityProperty, 0.72, "bg"));
+        template.Triggers.Add(pressed);
+
+        var off = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+        off.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Edge, "bg"));
+        template.Triggers.Add(off);
+
+        return template;
+    }
+
+    /// <summary>The row of buttons along the bottom of a dialog.</summary>
+    internal static StackPanel Buttons(params UIElement[] buttons)
+    {
+        ArgumentNullException.ThrowIfNull(buttons);
+
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 16, 0, 0),
+        };
+
+        foreach (var button in buttons)
+        {
+            row.Children.Add(button);
+        }
+
+        return row;
+    }
+
+    /// <summary>Give a text box the same rounded, dark chrome as the search field.</summary>
+    internal static TextBox Input(TextBox box)
+    {
+        ArgumentNullException.ThrowIfNull(box);
+
+        box.Background = Palette.Raised;
+        box.Foreground = Palette.Text;
+        box.CaretBrush = Palette.Accent;
+        box.BorderBrush = Palette.Edge;
+        box.BorderThickness = new Thickness(1);
+        box.Padding = new Thickness(10, 8, 10, 8);
+        box.FontSize = 13;
+        box.Template = InputTemplate();
+        return box;
+    }
+
+    private static ControlTemplate InputTemplate()
+    {
+        var border = new FrameworkElementFactory(typeof(Border), "shell");
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetBinding(Border.BackgroundProperty, Templated(nameof(Control.Background)));
+        border.SetBinding(Border.BorderBrushProperty, Templated(nameof(Control.BorderBrush)));
+        border.SetBinding(Border.BorderThicknessProperty, Templated(nameof(Control.BorderThickness)));
+        border.SetBinding(Border.PaddingProperty, Templated(nameof(Control.Padding)));
+
+        // PART_ContentHost is the name the TextBox looks for; without it the box renders but
+        // never shows a caret or accepts text.
+        var host = new FrameworkElementFactory(typeof(ScrollViewer), "PART_ContentHost");
+        host.SetValue(Control.BorderThicknessProperty, new Thickness(0));
+        host.SetValue(Control.BackgroundProperty, Brushes.Transparent);
+        border.AppendChild(host);
+
+        var template = new ControlTemplate(typeof(TextBox)) { VisualTree = border };
+
+        var focused = new Trigger { Property = UIElement.IsKeyboardFocusWithinProperty, Value = true };
+        focused.Setters.Add(new Setter(Border.BorderBrushProperty, Palette.Accent, "shell"));
+        template.Triggers.Add(focused);
+
+        return template;
+    }
+
+    private static System.Windows.Data.Binding Templated(string property) =>
+        new(property) { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent };
+
+    /// <summary>
+    /// A block of plan or transcript text, in a card, scrolling on its own.
+    /// </summary>
+    /// <remarks>
+    /// Monospaced because it is always JSON, a rendered plan or a timestamped log, and all three
+    /// depend on their columns lining up to be readable at all.
+    /// </remarks>
+    internal static ScrollViewer CodePanel(string text, double minHeight = 0)
+    {
+        var scroller = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Background = Palette.Raised,
+            BorderBrush = Palette.Edge,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(12, 10, 12, 10),
+            MinHeight = minHeight,
+            Content = new TextBlock
+            {
+                Text = text,
+                Foreground = Palette.Text,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+            },
+        };
+
+        scroller.Resources.Add(typeof(ScrollBar), SlimScrollBar());
+        return scroller;
+    }
 }
