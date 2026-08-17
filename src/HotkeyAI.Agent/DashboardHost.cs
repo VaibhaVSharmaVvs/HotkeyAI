@@ -8,6 +8,7 @@ using HotkeyAI.Core.Authoring;
 using HotkeyAI.Core.Dsl;
 using HotkeyAI.Core.Json;
 using HotkeyAI.Core.Policy;
+using HotkeyAI.Engine.Execution;
 using HotkeyAI.Engine.Store;
 using HotkeyAI.Ui;
 using HotkeyAI.Windows;
@@ -31,8 +32,127 @@ internal sealed class DashboardHost(
     Func<IDisposable> suspendHotkeys,
     IReadOnlyList<KeyName> panicChord,
     IReadOnlyDictionary<string, RunRecord> lastRuns,
-    IVersionStore versions) : IDashboardHost
+    IVersionStore versions,
+    AutomationRunner runner) : IDashboardHost
 {
+    public string? WhyNotTestable(string fileName)
+    {
+        var automation = Find(fileName);
+
+        if (automation is null)
+        {
+            return $"{fileName} is no longer in the automations folder.";
+        }
+
+        if (!automation.Validation.IsValid || automation.Plan is null)
+        {
+            return "This plan does not validate, so there is nothing safe to run.";
+        }
+
+        // Approval, but deliberately not the enabled switch. See WhyNotTestable on the interface.
+        if (automation.Status != ApprovalStatus.Approved)
+        {
+            return "Review and approve it first — a test run is a real run.";
+        }
+
+        return runner.IsBusy ? "Another automation is still running." : null;
+    }
+
+    /// <summary>
+    /// Run an automation on demand and stream what happens.
+    /// </summary>
+    /// <remarks>
+    /// Re-checks the refusal immediately before running rather than trusting the caller's earlier
+    /// answer. The folder is watched, so a plan can be edited — and thereby un-approved — between
+    /// the window opening and the button being pressed.
+    /// </remarks>
+    public async Task<TestRunResult> TestRunAsync(
+        string fileName, IProgress<RunStep> steps, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(steps);
+
+        if (WhyNotTestable(fileName) is { } refusal)
+        {
+            return new TestRunResult(false, 0, refusal, "");
+        }
+
+        var plan = Find(fileName)?.Plan;
+
+        if (plan is null)
+        {
+            return new TestRunResult(
+                false, 0, $"{fileName} is no longer in the automations folder.", "");
+        }
+
+        var attempt = await runner
+            .RunAsync(fileName, plan, "test run", new Relay(steps), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (attempt.Refusal is { } why)
+        {
+            return new TestRunResult(false, 0, why, "");
+        }
+
+        if (attempt.Record is not { } record)
+        {
+            return new TestRunResult(
+                false, 0, "The engine failed unexpectedly. The log has the details.", "");
+        }
+
+        return new TestRunResult(
+            record.Succeeded,
+            record.Unverified,
+            record.Succeeded ? null : "The run did not finish. See the steps above.",
+            record.Transcript);
+    }
+
+    /// <summary>
+    /// Turns engine log entries into something the window can paint.
+    /// </summary>
+    /// <remarks>
+    /// The translation lives here rather than in the window, so <c>HotkeyAI.Ui</c> keeps knowing
+    /// nothing about the engine. It is also the only place the distinction between "succeeded" and
+    /// "verified" is turned into a colour, which is the distinction most worth not fumbling: an
+    /// action that ran unverified must never be painted the same green as one that was checked.
+    /// </remarks>
+    private sealed class Relay(IProgress<RunStep> steps) : IRunObserver
+    {
+        public void Starting(string actionType, string? actionId) =>
+            steps.Report(new RunStep(
+                Now(),
+                actionId is { Length: > 0 } id ? $"{actionType} [{id}]" : actionType,
+                StepMood.Running));
+
+        public void Finished(LogEntry entry)
+        {
+            ArgumentNullException.ThrowIfNull(entry);
+
+            var mood = entry.Outcome switch
+            {
+                StepOutcome.Failed => StepMood.Failed,
+                StepOutcome.Aborted => StepMood.Failed,
+                StepOutcome.Skipped => StepMood.Idle,
+                _ => entry.Verification == Verification.Passed
+                    ? StepMood.Verified
+                    : StepMood.Unverified,
+            };
+
+            // The entry's own ToString is what the log file and the repair prompt hold, minus the
+            // leading timestamp the window renders in its own column. Rendering it any other way
+            // here would mean the user reads one wording live and a different one in the log.
+            var text = entry.ToString();
+            var space = text.IndexOf(' ', StringComparison.Ordinal);
+
+            steps.Report(new RunStep(
+                entry.At.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
+                space > 0 ? text[(space + 1)..] : text,
+                mood));
+        }
+
+        private static string Now() =>
+            DateTimeOffset.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+    }
+
     public IReadOnlyList<PlanVersionInfo> History(string fileName)
     {
         var current = ReadCurrent(fileName);
@@ -234,7 +354,8 @@ internal sealed class DashboardHost(
                 AutomationHealth.NotWorking => HealthState.NotWorking,
                 _ => HealthState.Untested,
             },
-            a.HealthNote)),
+            a.HealthNote,
+            a.Validation.IsValid && a.Plan is not null && a.Status == ApprovalStatus.Approved)),
     ];
 
     public void SetHealth(string fileName, HealthState state, string? note)

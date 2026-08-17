@@ -128,7 +128,6 @@ public static class AgentHost
 
 
         using var host = new HotkeyHost();
-        using var panic = new CancellationTokenSource();
 
         var runnable = new Dictionary<string, Automation>(StringComparer.Ordinal);
         var registrations = Register(host, loaded, runnable, history);
@@ -156,14 +155,15 @@ public static class AgentHost
         // text log to feed a repair prompt would be building on a guess.
         var lastRuns = new System.Collections.Concurrent.ConcurrentDictionary<string, RunRecord>(
             StringComparer.OrdinalIgnoreCase);
-        var running = 0;
+
+        // Every execution goes through here, whether a key started it or the dashboard did.
+        var runner = new AutomationRunner(executor, lastRuns);
 
         host.Pressed += name =>
         {
             if (string.Equals(name, "__panic", StringComparison.Ordinal))
             {
-                AgentLog.Line("[panic] stopping the running automation.");
-                panic.Cancel();
+                runner.Panic();
                 return;
             }
 
@@ -177,25 +177,7 @@ public static class AgentHost
                 }
             }
 
-            // One at a time. Two automations racing for the foreground window would produce
-            // results neither plan describes, and the logs would interleave into nonsense.
-            if (Interlocked.CompareExchange(ref running, 1, 0) != 0)
-            {
-                AgentLog.Line($"[{name}] ignored — another automation is still running.");
-                return;
-            }
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await ExecuteAsync(executor, name, plan, panic, lastRuns).ConfigureAwait(false);
-                }
-                finally
-                {
-                    Interlocked.Exchange(ref running, 0);
-                }
-            });
+            _ = Task.Run(() => runner.RunAsync(name, plan, "triggered"));
         };
 
         var live = registrations.Values.Count(r => r.Registered);
@@ -219,7 +201,7 @@ public static class AgentHost
         }
 
         var dashboard = new DashboardHost(
-            store, policy, Rebind, host.Probe, Suspend, PanicChord, lastRuns, versions);
+            store, policy, Rebind, host.Probe, Suspend, PanicChord, lastRuns, versions, runner);
 
         using var tray = await TrayIcon.ShowAsync(
             Tooltip(loaded.Count, live),
@@ -402,42 +384,6 @@ public static class AgentHost
         live == total
             ? $"Hotkey AI — {live} automations live"
             : $"Hotkey AI — {live} of {total} live, {total - live} not running";
-
-    private static async Task ExecuteAsync(
-        PlanExecutor executor,
-        string name,
-        Automation plan,
-        CancellationTokenSource panic,
-        System.Collections.Concurrent.ConcurrentDictionary<string, RunRecord> lastRuns)
-    {
-        AgentLog.Line();
-        AgentLog.Line($"[{name}] triggered");
-
-        // A fresh token per run: the panic key must stop the automation that is running, not
-        // permanently disable every future one.
-        using var run = CancellationTokenSource.CreateLinkedTokenSource(panic.Token);
-
-        try
-        {
-            var result = await executor.RunAsync(plan, run.Token).ConfigureAwait(false);
-            var transcript = result.ToTranscript();
-
-            AgentLog.Raw(transcript);
-            lastRuns[name] = new RunRecord(
-                DateTimeOffset.Now, result.Succeeded, result.UnverifiedCount, transcript);
-        }
-#pragma warning disable CA1031 // A failing automation must never take the agent down.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            AgentLog.Line($"[{name}] the engine failed unexpectedly: {ex.Message}");
-        }
-
-        if (panic.IsCancellationRequested)
-        {
-            AgentLog.Line("[panic] cleared; hotkeys are live again.");
-        }
-    }
 
     private static Dictionary<string, RegistrationResult> Register(
         HotkeyHost host,

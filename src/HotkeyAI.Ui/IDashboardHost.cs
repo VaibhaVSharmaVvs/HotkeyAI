@@ -14,6 +14,11 @@ namespace HotkeyAI.Ui;
 /// <param name="LastRun">A short description of the last run, or null if it has not run.</param>
 /// <param name="Health">The user's verdict on whether it works.</param>
 /// <param name="HealthNote">What they said was wrong, if they said anything.</param>
+/// <param name="CanTestRun">
+/// Whether running it on demand is possible: valid, and approved. Deliberately ignores whether
+/// something else is running, which changes by the second and would make the button flicker in
+/// and out; that case is caught when the button is pressed instead.
+/// </param>
 public sealed record DashboardEntry(
     string FileName,
     string Name,
@@ -25,7 +30,8 @@ public sealed record DashboardEntry(
     string Preview,
     string? LastRun = null,
     HealthState Health = HealthState.Untested,
-    string? HealthNote = null);
+    string? HealthNote = null,
+    bool CanTestRun = false);
 
 /// <summary>
 /// Whether a person has confirmed an automation does what they meant.
@@ -61,6 +67,39 @@ public sealed record PlanVersionInfo(string Id, DateTimeOffset When, string Summ
 /// <param name="Transcript">The execution log, verbatim.</param>
 public sealed record RunRecord(
     DateTimeOffset When, bool Succeeded, int Unverified, string Transcript);
+
+/// <summary>How one line of a live run should read.</summary>
+public enum StepMood
+{
+    /// <summary>An action that has started and not yet finished. A caption, not a log line.</summary>
+    Running,
+
+    /// <summary>Finished, and the engine confirmed its effect.</summary>
+    Verified,
+
+    /// <summary>Finished without throwing, but nothing checked that it did anything.</summary>
+    Unverified,
+
+    /// <summary>Failed, or its postcondition did not hold.</summary>
+    Failed,
+
+    /// <summary>Not run, or stopped.</summary>
+    Idle,
+}
+
+/// <summary>One line of a run as it happens.</summary>
+/// <param name="Time">Clock time, for the timestamped transcript.</param>
+/// <param name="Text">The line itself.</param>
+/// <param name="Mood">How to colour it.</param>
+public sealed record RunStep(string Time, string Text, StepMood Mood);
+
+/// <summary>How a test run ended.</summary>
+/// <param name="Succeeded">True only if every action completed and no postcondition failed.</param>
+/// <param name="Unverified">Actions that ran with nothing confirming they did anything.</param>
+/// <param name="FailureReason">Why it stopped, when it did not finish.</param>
+/// <param name="Transcript">The full log, verbatim.</param>
+public sealed record TestRunResult(
+    bool Succeeded, int Unverified, string? FailureReason, string Transcript);
 
 /// <summary>What probing a chord found out.</summary>
 /// <param name="CanBind">Whether saving this chord would work.</param>
@@ -182,6 +221,38 @@ public interface IDashboardHost
     /// prompt built from a misparsed log is worse than one that admits it has nothing.
     /// </remarks>
     RunRecord? LastRun(string fileName);
+
+    /// <summary>
+    /// Why this automation cannot be test-run right now, or null if it can.
+    /// </summary>
+    /// <remarks>
+    /// Approval is required, and that ordering is deliberate rather than awkward. Approving says
+    /// "I have read what this does"; testing asks "does it do what I meant". The second question
+    /// is only worth asking once the first is answered, and letting a test run skip the gate would
+    /// turn a dropped file into one click from running.
+    /// <para>
+    /// Being switched off is not a reason to refuse. Off means the hotkey does not fire it, and
+    /// the user asking for a run in this window has been considerably more explicit than a
+    /// keypress.
+    /// </para>
+    /// </remarks>
+    string? WhyNotTestable(string fileName);
+
+    /// <summary>
+    /// Run an automation now, reporting each step as it happens.
+    /// </summary>
+    /// <param name="fileName">Which automation.</param>
+    /// <param name="steps">
+    /// Told about every action as it starts and as it finishes. Called from the executor's thread,
+    /// so an implementation that touches the UI has to marshal.
+    /// </param>
+    /// <param name="cancellationToken">The Stop button. The panic key works regardless.</param>
+    /// <remarks>
+    /// This is a real run against the real desktop, identical to the one the hotkey performs. A
+    /// dry run would be a different and much less useful thing to watch.
+    /// </remarks>
+    Task<TestRunResult> TestRunAsync(
+        string fileName, IProgress<RunStep> steps, CancellationToken cancellationToken);
 
     /// <summary>
     /// The prompt to paste into Claude Code to get a broken automation fixed.
