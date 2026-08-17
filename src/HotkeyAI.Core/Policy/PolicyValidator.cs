@@ -53,6 +53,7 @@ public static partial class PolicyValidator
             CheckChord(path, action, errors);
             CheckSelectors(path, action, options, errors);
             CheckOpen(path, action, errors);
+            CheckPaths(path, action, options, errors);
         }
 
         CheckDataflow(automation, all, errors);
@@ -255,6 +256,128 @@ public static partial class PolicyValidator
                 path + "/path",
                 $"\"{literal}\" is not under an allowed root ("
                 + string.Join(", ", options.AllowedRoots) + ")."));
+        }
+    }
+
+    /// <summary>
+    /// Check every literal path in an action, not just the one on <c>launch_process</c>.
+    /// </summary>
+    /// <remarks>
+    /// Security review 2026-08-17, finding L1. Out-of-root literals on <c>open_path</c>,
+    /// <c>list_files</c>, <c>list_directories</c>, <c>path_exists</c>, <c>workingDirectory</c> and
+    /// <c>expect.path_exists</c> all validated clean and failed only at run time — a plan the user
+    /// could approve and that could never work. The runtime guard held, so this is honesty rather
+    /// than a hole, and the honesty matters most on the approval screen: someone reading a preview
+    /// is being asked whether to trust a plan, and "this cannot run" is something they should learn
+    /// then rather than on the keypress.
+    /// <para>
+    /// Only when roots are configured. With none, the run-time guard refuses every path anyway, and
+    /// a validator that rejected every literal under <see cref="PolicyOptions.Default"/> would be
+    /// useless for authoring — the question "is this under an allowed root" has no answer worth
+    /// giving when there are no roots to be under.
+    /// </para>
+    /// <para>
+    /// <c>launch_process.path</c> keeps its own stricter treatment in <see cref="CheckLaunch"/>: it
+    /// refuses an interpolated path outright, because launching is the one operation where a value
+    /// that cannot be checked before the plan runs is worth refusing rather than re-checking.
+    /// </para>
+    /// </remarks>
+    private static void CheckPaths(
+        string path, HotkeyAction action, PolicyOptions options, List<ValidationError> errors)
+    {
+        foreach (var (pointer, literal) in Paths(action, path))
+        {
+            // launch_process.path is CheckLaunch's, and reporting it twice in different words would
+            // be worse than not reporting it here at all.
+            if (action is LaunchProcessAction && pointer == path + "/path")
+            {
+                continue;
+            }
+
+            // Interpolated: nothing to check statically, and the executor re-checks the resolved
+            // value against the same roots before touching it.
+            if (literal.Length == 0 || literal.Contains("${", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!WindowsPath.IsAbsolute(literal))
+            {
+                errors.Add(Error(
+                    pointer,
+                    $"\"{literal}\" is not an absolute Windows path. A relative path has nothing "
+                    + "to be relative to — an automation runs from wherever the agent happens to "
+                    + "be — so it can never resolve."));
+                continue;
+            }
+
+            if (options.AllowedRoots.Count > 0
+                && !options.AllowedRoots.Any(root => WindowsPath.IsUnder(literal, root)))
+            {
+                errors.Add(Error(
+                    pointer,
+                    $"\"{literal}\" is not under an allowed root ("
+                    + string.Join(", ", options.AllowedRoots)
+                    + "). The engine would refuse this at run time, so the plan could be approved "
+                    + "and still never work."));
+            }
+        }
+    }
+
+    /// <summary>Every filesystem path an action carries, with the pointer that reaches it.</summary>
+    /// <remarks>
+    /// Found by JSON name — <c>path</c> and <c>workingDirectory</c> — rather than by naming the
+    /// records, for the reason the rest of this file gives: a primitive added later is covered
+    /// without anyone remembering to come back here. There is no field called <c>path</c> in the DSL
+    /// that is not a filesystem path, and a postcondition or predicate carrying one is reached
+    /// through the same walk.
+    /// </remarks>
+    private static IEnumerable<(string Path, string Literal)> Paths(object value, string path)
+    {
+        if (value is IEnumerable<Condition> conditions)
+        {
+            var index = 0;
+            foreach (var condition in conditions)
+            {
+                foreach (var found in Paths(condition, $"{path}/{index++}"))
+                {
+                    yield return found;
+                }
+            }
+
+            yield break;
+        }
+
+        if (value is not (HotkeyAction or Postcondition or Condition))
+        {
+            yield break;
+        }
+
+        foreach (var property in value.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0))
+        {
+            if (SafeRead(property, value) is not { } inner || inner is IEnumerable<HotkeyAction>)
+            {
+                continue;
+            }
+
+            var name = JsonName(property);
+
+            if (inner is string literal)
+            {
+                if (name is "path" or "workingDirectory")
+                {
+                    yield return ($"{path}/{name}", literal);
+                }
+
+                continue;
+            }
+
+            foreach (var found in Paths(inner, $"{path}/{name}"))
+            {
+                yield return found;
+            }
         }
     }
 
