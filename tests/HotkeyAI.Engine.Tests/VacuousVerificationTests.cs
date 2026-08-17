@@ -9,7 +9,7 @@ namespace HotkeyAI.Engine.Tests;
 /// A postcondition must never report success while checking nothing.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding M1. An unset variable interpolates to the empty string, so
+/// An unset variable interpolates to the empty string, so
 /// <c>contains: "${ghost}"</c> became <c>Contains("")</c> — true of every string — and the step was
 /// logged as <c>(verified)</c> with the clipboard holding something entirely unrelated.
 /// <para>

@@ -9,11 +9,11 @@ namespace HotkeyAI.Engine.Tests;
 /// The run-time half of the <c>open_path</c> extension policy — the half that matters.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding M9. The validator can only judge a literal path, and the
-/// amplifying shape the review demonstrated goes through a variable: <c>list_files</c> over
-/// <c>Downloads</c> with pattern <c>*</c>, then <c>foreach</c> → <c>open_path ${f.fullPath}</c>. That
-/// plan validates, and must — refusing the shape outright would forbid every legitimate "open what I
-/// picked". So the refusal has to happen per resolved value, here.
+/// The validator can only judge a literal path, and the amplifying shape goes through a variable:
+/// <c>list_files</c> over <c>Downloads</c> with pattern <c>*</c>, then <c>foreach</c> →
+/// <c>open_path ${f.fullPath}</c>. That plan validates, and must — refusing the shape outright
+/// would forbid every legitimate "open what I picked". So the refusal has to happen per resolved
+/// value, here.
 /// </remarks>
 public sealed class ShellOpenExecutionTests
 {
@@ -38,7 +38,7 @@ public sealed class ShellOpenExecutionTests
     [Fact]
     public async Task TheReviewsAmplifyingShapeOpensTheDocumentsAndRefusesTheExecutable()
     {
-        // Exactly the plan from the review, against a Downloads folder holding what a browser might
+        // The amplifying shape itself, against a Downloads folder holding what a browser might
         // have put there. The point is that the plan does not simply fail: it opens what it should
         // and refuses what it should, with the refusal named in the log.
         var desktop = new FakeDesktop();

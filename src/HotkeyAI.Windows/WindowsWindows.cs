@@ -42,10 +42,10 @@ public sealed class WindowsWindows : IWindows
             }
         }
 
-        // The process name is looked up once, for the winner, rather than once per window.
-        // Security review 2026-08-17, finding L9: this used to build a full WindowRef for every
-        // visible window — Process.GetProcessById plus three syscalls for an integrity level nothing
-        // reads — on every pass, and a wait_for_window polls every 150 ms for up to its timeout.
+        // The process name is looked up once, for the winner, rather than once per window. This
+        // used to build a full WindowRef for every visible window — Process.GetProcessById plus
+        // three syscalls for an integrity level nothing reads — on every pass, and a
+        // wait_for_window polls every 150 ms for up to its timeout.
         return ValueTask.FromResult(best == 0 ? null : Describe(best));
     }
 
@@ -151,15 +151,14 @@ public sealed class WindowsWindows : IWindows
     /// Visible top-level windows with a title, excluding shell furniture — handle and title only.
     /// </summary>
     /// <remarks>
-    /// Deliberately cheap. Security review 2026-08-17, finding L9: this built a full
-    /// <see cref="WindowRef"/> per window, which meant <c>Process.GetProcessById</c> — a process-list
-    /// read and an allocation — plus three syscalls for an integrity level that nothing anywhere
-    /// consumed. Multiplied by every visible window, on every 150 ms poll of a
-    /// <c>wait_for_window</c> that may run for its full timeout.
+    /// Deliberately cheap. This once built a full <see cref="WindowRef"/> per window, which meant
+    /// <c>Process.GetProcessById</c> — a process-list read and an allocation — plus three syscalls
+    /// for an integrity level that nothing anywhere consumed. Multiplied by every visible window,
+    /// on every 150 ms poll of a <c>wait_for_window</c> that may run for its full timeout.
     /// <para>
-    /// The title is read here because the common selector needs it and it is one cheap call. Anything
-    /// dearer — the process name, the class — is looked up only when a selector asks, or once for the
-    /// window that won.
+    /// The title is read here because the common selector needs it and it is one cheap call.
+    /// Anything dearer — the process name, the class — is looked up only when a selector asks, or
+    /// once for the window that won.
     /// </para>
     /// </remarks>
     private static List<(nint Handle, string Title)> Candidates()
@@ -192,8 +191,8 @@ public sealed class WindowsWindows : IWindows
     /// How long a single title may be tested against a selector's pattern.
     /// </summary>
     /// <remarks>
-    /// A backstop, not the defence — <see cref="TitleOptions"/> is. Per window, and that is the cost
-    /// worth knowing: the enumeration runs over every visible top-level window, and a
+    /// A backstop, not the defence — <see cref="TitleOptions"/> is. Per window, and that is the
+    /// cost worth knowing: the enumeration runs over every visible top-level window, and a
     /// wait_for_window polling every 150 ms can repeat the whole sweep for as long as its timeout
     /// allows.
     /// </remarks>
@@ -203,11 +202,11 @@ public sealed class WindowsWindows : IWindows
     /// Title patterns run on the non-backtracking engine, so they cannot blow up.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding M4. The review suggested a backtracking heuristic in the
-    /// policy layer; this is better than a heuristic, because it is a guarantee. .NET's
-    /// non-backtracking engine matches in time linear in the input, so <c>^(a+)+$</c> — the review's
-    /// own example, which times out the ordinary engine — answers in single-digit milliseconds and
-    /// there is no pattern that does not.
+    /// A guarantee rather than a heuristic, which is the whole reason for it: a backtracking
+    /// heuristic in the policy layer would only be a guess. .NET's non-backtracking engine matches
+    /// in time linear in the input, so <c>^(a+)+$</c> — which times out the ordinary engine on
+    /// forty characters — answers in single-digit milliseconds, and there is no pattern that does
+    /// not.
     /// <para>
     /// The trade is lookaround, backreferences and atomic groups, which this engine refuses at
     /// construction. That is a fair price for matching window titles, and
@@ -221,10 +220,10 @@ public sealed class WindowsWindows : IWindows
     /// Whether one window satisfies a selector, buying only the information the selector asks for.
     /// </summary>
     /// <remarks>
-    /// Ordered cheapest first, and that ordering is the fix for security review 2026-08-17 finding
-    /// L9: the title arrives with the candidate, so a <c>titleContains</c> that does not match costs
-    /// a string comparison and nothing else. The process name — a process-list read — and the window
-    /// class are fetched only if a selector names them, and only for windows that got that far.
+    /// Ordered cheapest first, and that ordering is the point: the title arrives with the
+    /// candidate, so a <c>titleContains</c> that does not match costs a string comparison and
+    /// nothing else. The process name — a process-list read — and the window class are fetched only
+    /// if a selector names them, and only for windows that got that far.
     /// </remarks>
     private static bool Matches(nint handle, string title, WindowSelector selector)
     {
@@ -245,10 +244,10 @@ public sealed class WindowsWindows : IWindows
             }
             catch (RegexMatchTimeoutException)
             {
-                // Reported, not swallowed. Security review 2026-08-17, finding M4: the catch filter
-                // here tested a private marker class that nothing in the repository ever throws, so
-                // the real RegexMatchTimeoutException escaped, aborted the enumeration partway and
-                // surfaced as a raw exception message. Returning false would be worse than that: a
+                // Reported, not swallowed. The catch filter here used to test a private marker
+                // class that nothing in the repository ever throws, so the real
+                // RegexMatchTimeoutException escaped, aborted the enumeration partway and surfaced
+                // as a raw exception message. Returning false would be worse than that: a
                 // catastrophic pattern would silently match nothing, and "no window found" is the
                 // one answer that looks like an ordinary result.
                 throw new InvalidOperationException(

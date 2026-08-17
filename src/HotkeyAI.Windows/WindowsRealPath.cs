@@ -7,7 +7,7 @@ namespace HotkeyAI.Windows;
 /// Asks the kernel where a path actually leads.
 /// </summary>
 /// <remarks>
-/// Exists for security review 2026-08-17 finding H2. The path guard's containment check is a
+/// The path guard's containment check is a
 /// string comparison — correct for <c>..</c>, and what lets it be tested on Linux — but a
 /// directory junction created inside the allowed root reaches anywhere on the machine while every
 /// path through it still reads as being under the root. Creating one needs no elevation.

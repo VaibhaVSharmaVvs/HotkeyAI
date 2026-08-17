@@ -16,10 +16,10 @@ namespace HotkeyAI.Agent;
 /// the only record that exists.
 /// </para>
 /// <para>
-/// Security review 2026-08-17, finding L2: it also grew without limit. One file per day, kept
-/// forever, each holding the window titles and file paths PLAN.md item 7 flags as
-/// PII/confidential-adjacent. "The record that exists" and "the record that exists indefinitely" are
-/// different things, and only the first is a requirement.
+/// It also used to grow without limit. One file per day, kept forever, each holding the window
+/// titles and file paths PLAN.md item 7 flags as PII/confidential-adjacent. "The record that
+/// exists" and "the record that exists indefinitely" are different things, and only the first is a
+/// requirement.
 /// </para>
 /// </remarks>
 public static class AgentLog
@@ -30,10 +30,10 @@ public static class AgentLog
     /// Bytes after which a day's log rolls to a numbered part.
     /// </summary>
     /// <remarks>
-    /// Rolls rather than truncates: a transcript half-written is worse than one in a second file, and
-    /// the failure a user is chasing is usually the most recent. Eight megabytes is far above a normal
-    /// day — four days of real use here came to 106 KB — so this catches a runaway loop logging
-    /// thousands of steps, not ordinary growth.
+    /// Rolls rather than truncates: a transcript half-written is worse than one in a second file,
+    /// and the failure a user is chasing is usually the most recent. Eight megabytes is far above a
+    /// normal day — four days of real use here came to 106 KB — so this catches a runaway loop
+    /// logging thousands of steps, not ordinary growth.
     /// </remarks>
     private const long MaxBytesPerFile = 8L * 1024 * 1024;
 
@@ -146,8 +146,8 @@ public static class AgentLog
                 var path = Resolve();
                 File.AppendAllText(path, text);
 
-                // Counted rather than re-read. A FileInfo per line would turn every log write into a
-                // filesystem round trip, and the count only has to be right enough to roll.
+                // Counted rather than re-read. A FileInfo per line would turn every log write into
+                // a filesystem round trip, and the count only has to be right enough to roll.
                 currentBytes += text.Length;
             }
         }

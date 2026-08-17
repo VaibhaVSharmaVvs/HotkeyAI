@@ -9,7 +9,7 @@ namespace HotkeyAI.Engine.Tests;
 /// The wall-clock cap bounds the run, not the gaps between its steps.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding M5. <c>CheckLimits</c> evaluated
+/// <c>CheckLimits</c> used to evaluate
 /// <c>run.Elapsed &gt; limits.MaxDuration</c> before each action and never during one, so a single
 /// action ran for its own <c>timeoutMs</c> — bounded by policy at 300 000 ms, two and a half times
 /// the documented 120 s cap — and a verification polled for its own <c>withinMs</c> on top of that.
@@ -18,10 +18,10 @@ namespace HotkeyAI.Engine.Tests;
 /// cannot reach the keyboard.
 /// <para>
 /// Real time, deliberately, with the limits shrunk to milliseconds: the fix is about the clock the
-/// deadlines are derived from, and a fake clock would let a wrong derivation pass. Before this
-/// finding the cap had no test of any kind, partly because <c>RunState</c> measured elapsed time
-/// with a <c>Stopwatch</c> while every deadline came from the executor's <c>TimeProvider</c> — two
-/// clocks that could disagree. They are now one.
+/// deadlines are derived from, and a fake clock would let a wrong derivation pass. The cap went
+/// untested for a long time, partly because <c>RunState</c> measured elapsed time with a
+/// <c>Stopwatch</c> while every deadline came from the executor's <c>TimeProvider</c> — two clocks
+/// that could disagree. They are now one.
 /// </para>
 /// </remarks>
 public sealed class TimeCapTests
@@ -66,8 +66,8 @@ public sealed class TimeCapTests
     [Fact]
     public async Task TheCapIsBlamedRatherThanTheAction()
     {
-        // The two events wear the same OperationCanceledException, and reporting the wrong one sends
-        // someone tuning a timeoutMs that was never the problem.
+        // The two events wear the same OperationCanceledException, and reporting the wrong one
+        // sends someone tuning a timeoutMs that was never the problem.
         var limits = new ExecutionLimits { MaxDuration = TimeSpan.FromMilliseconds(200) };
 
         var result = await Executor(new FakeDesktop(), limits).RunAsync(
@@ -85,8 +85,9 @@ public sealed class TimeCapTests
     public async Task AnActionInsideItsOwnTimeoutIsStillBlamedForItsOwnTimeout()
     {
         // The converse, and the reason the clip is conditional: with budget to spare, a slow action
-        // is its own fault and must say so in its own words. Applied unconditionally, every ordinary
-        // timeout would start reading as a cap breach and nobody would know which number to change.
+        // is its own fault and must say so in its own words. Applied unconditionally, every
+        // ordinary timeout would start reading as a cap breach and nobody would know which number
+        // to change.
         var limits = new ExecutionLimits { MaxDuration = TimeSpan.FromSeconds(30) };
 
         var result = await Executor(new FakeDesktop(), limits).RunAsync(
@@ -106,10 +107,10 @@ public sealed class TimeCapTests
     [Fact]
     public async Task APollingActionIsClippedByTheCapRatherThanItsOwnWindow()
     {
-        // wait_for_process polls on its own deadline, taken from timeoutMs — whose policy maximum is
-        // 300 000 ms, two and a half times the documented cap. The clipped per-action token is what
-        // cuts the poll short, so this is a different code path from the plain wait above and worth
-        // its own test.
+        // wait_for_process polls on its own deadline, taken from timeoutMs — whose policy maximum
+        // is 300 000 ms, two and a half times the documented cap. The clipped per-action token is
+        // what cuts the poll short, so this is a different code path from the plain wait above and
+        // worth its own test.
         var limits = new ExecutionLimits { MaxDuration = TimeSpan.FromMilliseconds(300) };
 
         var start = DateTimeOffset.UtcNow;

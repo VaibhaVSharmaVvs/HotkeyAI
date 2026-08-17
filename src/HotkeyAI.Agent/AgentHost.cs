@@ -116,15 +116,15 @@ public static class AgentHost
         UiThread.Report = AgentLog.Line;
 
         // Root first, and with its DACL, before anything creates a subfolder under it and inherits
-        // whatever %LOCALAPPDATA% happens to grant. Security review 2026-08-17, finding L7:
-        // PLAN.md control 4 specifies a per-user ACL and nothing set or checked one.
+        // whatever %LOCALAPPDATA% happens to grant. PLAN.md control 4 specifies a per-user ACL, and
+        // nothing used to set or check one.
         StoreAcl.EnsureRoot();
         Directory.CreateDirectory(AgentPaths.Automations);
 
         ReportStoreAcl();
 
-        // Security review 2026-08-17, finding L2. Logs held window titles and file paths for as long
-        // as the machine lasted; two weeks covers every reason anyone opens one.
+        // Logs used to hold window titles and file paths for as long as the machine lasted, and
+        // two weeks covers every reason anyone opens one.
         if (LogRetention.Prune() is > 0 and var removed)
         {
             AgentLog.Line(
@@ -150,7 +150,6 @@ public static class AgentHost
         // The panic key goes first, before any automation gets a chance at a chord.
         // RegisterHotKey is first-come-first-served, so registering automations first meant one
         // of them could take Ctrl+Alt+Shift+Esc and the abort key would simply fail to bind.
-        // Security review 2026-08-17, finding H4.
         RegisterPanic(host);
 
         var runnable = new Dictionary<string, Automation>(StringComparer.Ordinal);
@@ -303,7 +302,7 @@ public static class AgentHost
 
             // A mouse-reachable abort. The panic key is the fast path, but it can fail to
             // register — another application may already hold the chord — and until now that left
-            // no way at all to stop a running automation. Security review 2026-08-17, finding H4.
+            // no way at all to stop a running automation.
             // Shown only while something is running, so the menu does not offer an action that
             // would do nothing.
             .. runner.IsBusy
@@ -378,9 +377,9 @@ public static class AgentHost
     /// Say, in the log, whether the store's per-user ACL is actually in force.
     /// </summary>
     /// <remarks>
-    /// The "assert" half of PLAN.md control 4 — security review 2026-08-17, finding L7. Logged rather
-    /// than enforced: rewriting the ACL of a store that already exists means overruling whatever the
-    /// user or their IT department configured, and getting that wrong locks someone out of their own
+    /// The "assert" half of PLAN.md control 4. Logged rather than enforced: rewriting the ACL of a
+    /// store that already exists means overruling whatever the user or their IT department
+    /// configured, and getting that wrong locks someone out of their own
     /// automations. Reported every start, so a control that stops holding is visible.
     /// </remarks>
     private static void ReportStoreAcl()

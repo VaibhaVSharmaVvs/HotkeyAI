@@ -519,7 +519,7 @@ internal sealed class DashboardHost(
         // No separate panic-chord test here any more: HotkeyChord.Problems above owns that rule
         // now, so the dashboard and the validator cannot disagree about it. They did — the
         // dashboard refused the panic chord while hand-authored JSON sailed through, which is the
-        // drift HotkeyChord was extracted to prevent. Security review 2026-08-17, finding H4.
+        // drift HotkeyChord was extracted to prevent.
         var chord = HotkeyChord.Normalise(keys);
         var rendered = PlanRenderer.DescribeTrigger(new Trigger { Keys = chord });
 
@@ -602,13 +602,12 @@ internal sealed class DashboardHost(
 
             // The bytes must still be the bytes whose approval was just checked.
             //
-            // Security review 2026-08-17, finding H3: this read the file *after* recording
-            // wasApproved from an earlier snapshot, then re-approved whatever it had written. The
-            // comment below claimed this code "knows it touched nothing else" — it did not know
-            // that. Anything able to write the automations folder, which is precisely the dropper
-            // trust-on-first-use exists to stop, could swap an approved plan's body and win the
-            // race on the next rebind, and the swapped body would be signed without the user ever
-            // seeing it.
+            // This used to read the file *after* recording wasApproved from an earlier snapshot,
+            // then re-approve whatever it had written. The comment below claimed this code "knows
+            // it touched nothing else" — it did not know that. Anything able to write the
+            // automations folder, which is precisely the dropper trust-on-first-use exists to stop,
+            // could swap an approved plan's body and win the race on the next rebind, and the
+            // swapped body would be signed without the user ever seeing it.
             if (!string.Equals(
                     AutomationStore.HashOf(onDisk),
                     automation.ContentHash,

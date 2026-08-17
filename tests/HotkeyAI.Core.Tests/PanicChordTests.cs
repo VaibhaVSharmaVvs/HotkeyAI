@@ -9,7 +9,7 @@ namespace HotkeyAI.Core.Tests;
 /// No automation may take the panic key's chord.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding H4. The rule existed in the dashboard, which refused the
+/// The rule used to exist in the dashboard, which refused the
 /// chord when it was captured through the UI, and nowhere else — so a hand-authored plan with
 /// trigger CTRL+ALT+SHIFT+ESC validated clean. Hand-authored JSON is V1's only real authoring
 /// path, so the rule was missing from the one road people use.

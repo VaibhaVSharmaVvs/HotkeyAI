@@ -25,10 +25,10 @@ public static class PlanValidator
             return structural;
         }
 
-        // Before deserialising, not after. Security review 2026-08-17, finding L4: a number too
-        // large for int32 threw during deserialisation and was reported as "a defect in Hotkey AI,
-        // not in the plan" — blaming the tool for something the plan did, because the schema's
-        // "integer" carries no range and nothing else looked. Checked here so the answer is a
+        // Before deserialising, not after. A number too large for int32 used to throw during
+        // deserialisation and be reported as "a defect in Hotkey AI, not in the plan" — blaming the
+        // tool for something the plan did, because the schema's "integer" carries no range and
+        // nothing else looked. Checked here so the answer is a
         // JSON Pointer at the offending number rather than an STJ message about System.Int32.
         if (OutOfRangeNumbers(json) is { Count: > 0 } tooBig)
         {

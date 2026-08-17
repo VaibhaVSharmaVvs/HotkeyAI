@@ -130,9 +130,9 @@ internal sealed class AutomationRunner(
         try
         {
             // Which of the two stopped it is knowable here and nowhere else: `stop` is the caller's
-            // (a dashboard or test-run Stop button), and `run` cancelled without it is the panic key.
-            // Security review 2026-08-17, finding L6 — the transcript used to blame the panic key
-            // either way, and the transcript is what gets pasted into a repair prompt.
+            // (a dashboard or test-run Stop button), and `run` cancelled without it is the panic
+            // key. The transcript used to blame the panic key either way, and it is what gets
+            // pasted into a repair prompt.
             var result = await executor
                 .RunAsync(
                     plan,

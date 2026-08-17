@@ -81,7 +81,7 @@ public static class WindowsPath
 
             // Trimmed only after the "." and ".." tests above, never before: Effective leaves those
             // two alone, but relying on that here would make the order look incidental when it is
-            // load-bearing. Re-audit finding A — the containment check has to compare the path
+            // load-bearing. The containment check has to compare the path
             // Windows will act on, which is the one with trailing dots and spaces gone.
             stack.Add(Effective(segment));
         }
@@ -178,14 +178,14 @@ public static class WindowsPath
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Win32 strips trailing dots and spaces from a path component before acting on it, and this type
-    /// did not — so the two disagreed about what a path meant. Security re-audit 2026-08-17, finding
-    /// A: <c>Extension("pwn.bat.")</c> returned null and <c>Extension("pwn.bat ")</c> returned
-    /// <c>".bat "</c>, neither of which is in the executable blocklist, while Windows ran
-    /// <c>pwn.bat</c> either way. That defeated the M9 control entirely, and the trailing-space
-    /// spelling also defeated H1's disclosure guarantee: the preview renders
-    /// <c>Open …\pwn.bat  with its default application</c>, and a trailing space is invisible to
-    /// whoever is approving it.
+    /// Win32 strips trailing dots and spaces from a path component before acting on it, and this
+    /// type did not — so the two disagreed about what a path meant. <c>Extension("pwn.bat.")</c>
+    /// returned null and <c>Extension("pwn.bat ")</c> returned <c>".bat "</c>, neither of which is
+    /// in the executable blocklist, while Windows ran <c>pwn.bat</c> either way. That defeated the
+    /// executable blocklist entirely, and the trailing-space spelling also defeated the preview's
+    /// honesty: it renders <c>Open …\pwn.bat  with its default application</c> — note the double
+    /// space, which is the whole problem, because a trailing space is invisible to whoever is
+    /// approving it.
     /// </para>
     /// <para>
     /// Verified against the live filesystem before writing this: <c>target.txt.</c>,

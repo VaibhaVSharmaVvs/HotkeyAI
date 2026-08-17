@@ -26,11 +26,10 @@ public sealed partial class Variables
     /// Variables holding something the user did not put in the plan.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding M8. <c>get_clipboard</c> and <c>type_text</c> were
-    /// carefully kept out of the log, and then <c>abort.reason</c> interpolated the same clipboard
-    /// text into a step detail — which becomes the transcript, the file under
-    /// <c>%LOCALAPPDATA%\HotkeyAI\logs</c>, and the repair prompt PLAN.md expects people to paste
-    /// somewhere. The reviewer's transcript showed an AWS key and a password arriving there.
+    /// <c>get_clipboard</c> and <c>type_text</c> were carefully kept out of the log, and then
+    /// <c>abort.reason</c> interpolated the same clipboard text into a step detail — which becomes
+    /// the transcript, the file under <c>%LOCALAPPDATA%\HotkeyAI\logs</c>, and the repair prompt
+    /// PLAN.md expects people to paste somewhere. An AWS key and a password reached it that way.
     /// <para>
     /// Provenance is the fix rather than pattern-matching the value, because a secret does not look
     /// like anything in particular. What is known for certain is where it came from.
@@ -128,11 +127,11 @@ public sealed partial class Variables
     /// outside the plan.
     /// </summary>
     /// <remarks>
-    /// For text that will be written down rather than acted on. Security review 2026-08-17, finding
-    /// M8: <c>abort.reason</c> is the one field whose interpolated value becomes a log line, and it
-    /// was putting clipboard contents into a file PLAN.md expects users to paste into repair
-    /// prompts. The placeholder names the variable, so the transcript still explains the shape of
-    /// what happened — <c>${clip}</c> redacted is far more use than a blank.
+    /// For text that will be written down rather than acted on. <c>abort.reason</c> was the first
+    /// field found putting clipboard contents into a file PLAN.md expects users to paste into
+    /// repair prompts, and the path-bearing details were the rest. The placeholder names the
+    /// variable, so the transcript still explains the shape of what happened — <c>${clip}</c>
+    /// redacted is far more use than a blank.
     /// <para>
     /// Deliberately a separate method rather than a flag on the existing one. Interpolating for the
     /// desktop and interpolating for a log are different operations with different risks, and a

@@ -100,12 +100,12 @@ public sealed class WindowsInput : IInput
     /// Whether a window class is an edit control, superclassed or not.
     /// </summary>
     /// <remarks>
-    /// The second half matters more than the first. A WinForms <c>TextBox</c> is a real edit control
-    /// with the real <c>ES_PASSWORD</c> style, but WinForms superclasses it and the class name comes
-    /// back as <c>WindowsForms10.EDIT.app.0.1405e41_r25_ad1</c> — so an exact-match list finds a
-    /// plain Win32 dialog's password box and misses every managed one, which is most of them. This
-    /// was found by probing a live masked TextBox rather than by reading, and it is the reason the
-    /// probe was worth writing.
+    /// The second half matters more than the first. A WinForms <c>TextBox</c> is a real edit
+    /// control with the real <c>ES_PASSWORD</c> style, but WinForms superclasses it and the class
+    /// name comes back as <c>WindowsForms10.EDIT.app.0.1405e41_r25_ad1</c> — so an exact-match list
+    /// finds a plain Win32 dialog's password box and misses every managed one, which is most of
+    /// them. This was found by probing a live masked TextBox rather than by reading, and it is the
+    /// reason the probe was worth writing.
     /// </remarks>
     internal static bool IsEditControl(string className) =>
         EditClasses.Contains(className)
@@ -117,17 +117,16 @@ public sealed class WindowsInput : IInput
     /// Whether the focused control masks what is typed into it.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding M6. PLAN.md control 3 claimed a password-style check that
-    /// did not exist: the code tested two window class names and the integrity level, so the
-    /// foreground being a credential *dialog* was caught while a password *field* inside an ordinary
-    /// window was not.
+    /// PLAN.md control 3 once claimed a password-style check that did not exist: the code tested
+    /// two window class names and the integrity level, so the foreground being a credential
+    /// *dialog* was caught while a password *field* inside an ordinary window was not.
     /// <para>
     /// The foreground window is not what receives typing — the focused child control is — so this
-    /// asks the foreground thread which control has the focus and reads its style. That covers Win32
-    /// and WinForms. It does not cover WPF, Chromium or Electron, where the focused element is not a
-    /// window at all and only UI Automation can see it; PLAN.md control 3 now says so rather than
-    /// implying otherwise, because a control described more broadly than it is implemented is worse
-    /// than a narrow one honestly described.
+    /// asks the foreground thread which control has the focus and reads its style. That covers
+    /// Win32 and WinForms. It does not cover WPF, Chromium or Electron, where the focused element
+    /// is not a window at all and only UI Automation can see it; PLAN.md control 3 now says so
+    /// rather than implying otherwise, because a control described more broadly than it is
+    /// implemented is worse than a narrow one honestly described.
     /// </para>
     /// </remarks>
     private static bool FocusIsMasked(uint foregroundThread)

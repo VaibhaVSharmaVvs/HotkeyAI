@@ -6,22 +6,23 @@ namespace HotkeyAI.Core.Tests;
 /// A path means what Windows will make of it, not what the string looks like.
 /// </summary>
 /// <remarks>
-/// Security re-audit 2026-08-17, finding A. Win32 strips trailing dots and spaces from a path
-/// component before acting on it, and <see cref="WindowsPath"/> did not — so the two disagreed about
-/// what a path meant. <c>Extension("pwn.bat.")</c> returned null and <c>Extension("pwn.bat ")</c>
-/// returned <c>".bat "</c>, neither of which is in the executable blocklist, while Windows ran
-/// <c>pwn.bat</c> either way.
+/// Win32 strips trailing dots and spaces from a path component before acting on it, and <see
+/// cref="WindowsPath"/> did not — so the two disagreed about what a path meant.
+/// <c>Extension("pwn.bat.")</c> returned null and <c>Extension("pwn.bat ")</c> returned <c>".bat
+/// "</c>, neither of which is in the executable blocklist, while Windows ran <c>pwn.bat</c> either
+/// way.
 /// <para>
-/// That defeated M9 outright, and the trailing-space spelling also defeated H1's disclosure guarantee:
-/// the preview renders <c>Open …\pwn.bat  with its default application</c> and a trailing space is
-/// invisible to whoever is approving it.
+/// That defeated the executable blocklist outright, and the trailing-space spelling also defeated
+/// the preview's honesty: it renders <c>Open …\pwn.bat  with its default application</c> — note the
+/// double space, which is the whole problem, because a trailing space is invisible to whoever is
+/// approving it.
 /// </para>
 /// <para>
 /// Verified against the live filesystem before fixing: <c>target.txt.</c>, <c>target.txt </c> and
-/// <c>target.txt...</c> all open <c>target.txt</c>. Also checked, because it would have been a worse
-/// bug in the containment check rather than the blocklist: <c>.. </c> does <em>not</em> become a
-/// parent reference — Windows treats it as an ordinary name — so no trailing-space spelling can climb
-/// out of an allowed root.
+/// <c>target.txt...</c> all open <c>target.txt</c>. Also checked, because it would have been a
+/// worse bug in the containment check rather than the blocklist: <c>.. </c> does <em>not</em>
+/// become a parent reference — Windows treats it as an ordinary name — so no trailing-space
+/// spelling can climb out of an allowed root.
 /// </para>
 /// </remarks>
 public sealed class TrailingDotPathTests

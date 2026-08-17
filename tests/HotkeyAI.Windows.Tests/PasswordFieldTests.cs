@@ -6,18 +6,19 @@ namespace HotkeyAI.Windows.Tests;
 /// Which focused controls the password-style check is willing to read a style bit from.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding M6. PLAN.md control 3 claimed input would be refused when
+/// PLAN.md control 3 once claimed input would be refused when
 /// "a control with the password style" has focus; the code checked two window class names and the
 /// integrity level, so a credential *dialog* was caught while a password *field* inside an ordinary
 /// window was not. The check now asks the foreground thread which control has the focus and reads
 /// its <c>ES_PASSWORD</c> style.
 /// <para>
-/// The class test has to come first, because <c>0x0020</c> means something else entirely on a button
-/// or a list box — read blindly it would invent password fields everywhere. And it has to understand
-/// superclassing: a live probe against a WinForms <c>TextBox</c> with <c>UseSystemPasswordChar</c>
-/// reported its class as <c>WindowsForms10.EDIT.app.0.1405e41_r25_ad1</c>, so the exact-match list
-/// this started as found a plain Win32 dialog's password box and missed every managed one — which is
-/// most of them. That is the bug these tests exist for.
+/// The class test has to come first, because <c>0x0020</c> means something else entirely on a
+/// button or a list box — read blindly it would invent password fields everywhere. And it has to
+/// understand superclassing: a live probe against a WinForms <c>TextBox</c> with
+/// <c>UseSystemPasswordChar</c> reported its class as
+/// <c>WindowsForms10.EDIT.app.0.1405e41_r25_ad1</c>, so the exact-match list this started as found
+/// a plain Win32 dialog's password box and missed every managed one — which is most of them. That
+/// is the bug these tests exist for.
 /// </para>
 /// </remarks>
 public sealed class PasswordFieldTests

@@ -9,17 +9,16 @@ namespace HotkeyAI.Engine.Tests;
 /// Nothing that came from outside the plan reaches a log line.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding M8. <c>get_clipboard</c> and <c>type_text</c> were carefully
-/// kept out of the log, and then <c>abort.reason</c> interpolated the same clipboard text into a step
-/// detail — which becomes the transcript, the file under <c>%LOCALAPPDATA%\HotkeyAI\logs</c>, and the
-/// repair prompt PLAN.md expects people to paste somewhere. The reviewer's own transcript showed an
-/// AWS key and a password arriving there:
+/// <c>get_clipboard</c> and <c>type_text</c> were carefully kept out of the log, and then
+/// <c>abort.reason</c> interpolated the same clipboard text into a step detail — which becomes the
+/// transcript, the file under <c>%LOCALAPPDATA%\HotkeyAI\logs</c>, and the repair prompt PLAN.md
+/// expects people to paste somewhere. An AWS key and a password reached it that way:
 /// <code>
 /// [a2] abort: Aborted - bailing out with AKIAIOSFODNN7EXAMPLE / hunter2
 /// </code>
 /// <para>
-/// Provenance is the fix rather than pattern-matching the value, because a secret does not look like
-/// anything in particular. What is known for certain is where it came from.
+/// Provenance is the fix rather than pattern-matching the value, because a secret does not look
+/// like anything in particular. What is known for certain is where it came from.
 /// </para>
 /// </remarks>
 public sealed class LogRedactionTests
@@ -164,20 +163,19 @@ public sealed class LogRedactionTests
         Assert.DoesNotContain(Secret, result.FailureReason!, StringComparison.Ordinal);
     }
 
-    // ------------------------- re-audit finding B: the other five sites -------------------------
+    // ------------------------------- the other five sites -------------------------------
 
     /// <summary>
     /// Every handler that interpolates a path and then logs it, refusal path included.
     /// </summary>
     /// <remarks>
-    /// Security re-audit 2026-08-17, finding B. M8 switched <c>abort.reason</c> to the redacting
-    /// interpolation and stopped there. The refusal path is the general leak: the path guard refuses
-    /// <em>any</em> value that is not a valid in-root path, and quoted the value it was given — so
-    /// clipboard text that is not a path at all was echoed verbatim into the transcript, the agent log
-    /// and the repair prompt.
+    /// Switching <c>abort.reason</c> to the redacting interpolation was not the end of it. The
+    /// refusal path is the general leak: the path guard refuses <em>any</em> value that is not a
+    /// valid in-root path, and quoted the value it was given — so clipboard text that is not a path
+    /// at all was echoed verbatim into the transcript, the agent log and the repair prompt.
     /// <para>
-    /// The re-audit named three handlers. There were five: <c>launch_process</c>'s executable and its
-    /// <c>workingDirectory</c> leaked the same way.
+    /// Five handlers, not the three that first look guilty: <c>launch_process</c>'s executable and
+    /// its <c>workingDirectory</c> leaked the same way.
     /// </para>
     /// </remarks>
     [Theory]
@@ -221,8 +219,8 @@ public sealed class LogRedactionTests
     [Fact]
     public async Task ASuccessLineDoesNotEchoTheClipboardEither()
     {
-        // The engine cannot tell a path-shaped secret from a path, so the success detail is redacted on
-        // the same rule as the refusal. Less specific than before, and correct.
+        // The engine cannot tell a path-shaped secret from a path, so the success detail is
+        // redacted on the same rule as the refusal. Less specific than before, and correct.
         var desktop = new FakeDesktop { ClipboardText = @"C:\Users\test\Projects\hunter2.txt" };
         desktop.ExistingPaths.Add(@"C:\Users\test\Projects\hunter2.txt");
 
@@ -244,9 +242,10 @@ public sealed class LogRedactionTests
     [Fact]
     public async Task TheGuardStillChecksTheRealValueNotTheRedactedOne()
     {
-        // The failure this fix could easily introduce. If the redacted string were handed to the guard,
-        // "[clip redacted]" would be checked instead of the path — every clipboard path would be
-        // refused, and worse, the boundary would be deciding about a string the OS never sees.
+        // The failure this fix could easily introduce. If the redacted string were handed to the
+        // guard, "[clip redacted]" would be checked instead of the path — every clipboard path
+        // would be refused, and worse, the boundary would be deciding about a string the OS never
+        // sees.
         var desktop = new FakeDesktop { ClipboardText = @"C:\Users\test\Projects\notes.txt" };
         desktop.ExistingPaths.Add(@"C:\Users\test\Projects\notes.txt");
 

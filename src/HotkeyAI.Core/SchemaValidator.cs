@@ -155,12 +155,12 @@ public static class SchemaValidator
                         || !specific.Any(p => p.StartsWith(e.Path + "/", StringComparison.Ordinal)))
             .ToList();
 
-        // Nothing specific anywhere, only roll-ups. Security review 2026-08-17, finding L5: this
-        // reported three messages, none of which mentioned nesting — and nesting is the only way it
-        // can happen. Every action is validated against the branch it declares, so an action that is
-        // itself well-formed and still rejected was rejected for *where it is*: the third
-        // control-flow level, which the schema deliberately does not offer. Saying "some properties
-        // did not match" three times describes the evaluator's search, not the user's mistake.
+        // Nothing specific anywhere, only roll-ups. This used to report three messages, none of
+        // which mentioned nesting — and nesting is the only way it can happen. Every action is
+        // validated against the branch it declares, so an action that is itself well-formed and
+        // still rejected was rejected for *where it is*: the third control-flow level, which the
+        // schema deliberately does not offer. Saying "some properties did not match" three times
+        // describes the evaluator's search, not the user's mistake.
         if (surviving.Count > 0 && surviving.TrueForAll(IsRollUp))
         {
             var deepest = surviving
@@ -230,7 +230,7 @@ public static class SchemaValidator
         // An unknown field produces two errors: additionalProperties on the object, and the
         // `false` subschema on the offending property itself — whose message, "All values fail
         // against the false schema", is evaluator vocabulary that means nothing to anyone.
-        // Security review 2026-08-17, finding L5. Collapsed into one error at the precise pointer,
+        // Collapsed into one error at the precise pointer,
         // which is the only version that both names the field and can be acted on.
         var unknown = mine
             .Where(e => IsFalseSchema(e) && e.InstancePath.Length > 1)

@@ -8,10 +8,10 @@ namespace HotkeyAI.Windows.Tests;
 /// The per-user ACL on the store is set explicitly and can be checked afterwards.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding L7. PLAN.md control 4 specifies a per-user ACL.
-/// <c>%LOCALAPPDATA%</c> inherits a reasonable one — confirmed on this machine: SYSTEM,
-/// Administrators and the user, nothing else — so the control held in practice. But nothing set it and
-/// nothing asserted it, and a control that is true by accident is one nobody notices becoming false.
+/// PLAN.md control 4 specifies a per-user ACL. <c>%LOCALAPPDATA%</c> inherits a reasonable one —
+/// confirmed on this machine: SYSTEM, Administrators and the user, nothing else — so the control
+/// held in practice. But nothing set it and nothing asserted it, and a control that is true by
+/// accident is one nobody notices becoming false.
 /// <para>
 /// These run against a temporary directory rather than the real store, which is why
 /// <c>Audit</c> takes a path internally.
@@ -75,8 +75,8 @@ public sealed class StoreAclTests : IDisposable
     public void SystemAndAdministratorsAreNotReported()
     {
         // SYSTEM because servicing, backup and Defender run as it. Administrators because they can
-        // take ownership regardless, so reporting them would be noise on every machine — which is how
-        // a warning becomes something people scroll past.
+        // take ownership regardless, so reporting them would be noise on every machine — which is
+        // how a warning becomes something people scroll past.
         CreateGranting(
             Well(WellKnownSidType.LocalSystemSid),
             Well(WellKnownSidType.BuiltinAdministratorsSid));
@@ -87,8 +87,8 @@ public sealed class StoreAclTests : IDisposable
     [Fact]
     public void EveryoneIsReported()
     {
-        // The finding that matters: automations in this folder run on a keypress, so write access is
-        // the ability to change what the user's own hotkeys do.
+        // The finding that matters: automations in this folder run on a keypress, so write access
+        // is the ability to change what the user's own hotkeys do.
         CreateGranting(Well(WellKnownSidType.WorldSid));
 
         var unexpected = Assert.Single(StoreAcl.Audit(directory)!);

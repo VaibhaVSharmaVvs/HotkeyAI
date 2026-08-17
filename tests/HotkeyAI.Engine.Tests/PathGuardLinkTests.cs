@@ -6,7 +6,7 @@ namespace HotkeyAI.Engine.Tests;
 /// The path guard must check where a path really goes, not only what it says.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding H2. Containment was purely lexical, so a directory junction
+/// Containment used to be purely lexical, so a directory junction
 /// created inside the allowed root — which needs no elevation — reached anywhere on the machine
 /// while every path through it still read as being under the root. Reproduced live against a
 /// junction to System32.
@@ -45,7 +45,8 @@ public sealed class PathGuardLinkTests
     [Fact]
     public void APathThatResolvesInsideTheRootIsStillAllowed()
     {
-        // Junctions inside the root pointing elsewhere inside it are ordinary and must keep working.
+        // Junctions inside the root pointing elsewhere inside it are ordinary and must keep
+        // working.
         var guard = new PathGuard(
             Roots,
             new Links(@"C:\Users\test\Projects\link", @"C:\Users\test\Projects\real"));

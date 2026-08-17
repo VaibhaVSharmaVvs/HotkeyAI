@@ -93,7 +93,7 @@ public sealed partial class PlanExecutor
         WaitAction a => await WaitAsync(a, token).ConfigureAwait(false),
 
         // ForLog, not Interpolate: this string becomes a LogEntry, the transcript, the file in
-        // %LOCALAPPDATA%\HotkeyAI\logs and the repair prompt. Security review 2026-08-17, M8.
+        // %LOCALAPPDATA%\HotkeyAI\logs and the repair prompt.
         AbortAction a => (StepOutcome.Aborted,
             run.Variables.InterpolateForLog(a.Reason) is { Length: > 0 } reason
                 ? reason
@@ -115,15 +115,14 @@ public sealed partial class PlanExecutor
     /// </summary>
     /// <param name="Value">The real interpolated value. Everything the OS sees uses this.</param>
     /// <param name="Loggable">
-    /// The same template with anything from outside the plan redacted. Everything that becomes a log
-    /// line uses this.
-    /// </param>
+    /// The same template with anything from outside the plan redacted. Everything that becomes a
+    /// log line uses this. </param>
     /// <remarks>
-    /// Security re-audit 2026-08-17, finding B. M8 redacted <c>abort.reason</c> and stopped there, but
-    /// several handlers interpolate a path and then put it in a step detail — in the success line and,
-    /// worse, in the guard's refusal, which fires for <em>any</em> value that is not a valid in-root
-    /// path. So a clipboard holding a credential rather than a path was echoed verbatim into the
-    /// transcript, the agent log and the repair prompt.
+    /// Redacting <c>abort.reason</c> alone was not enough: several handlers interpolate a path and
+    /// then put it in a step detail — in the success line and, worse, in the guard's refusal, which
+    /// fires for <em>any</em> value that is not a valid in-root path. So a clipboard holding a
+    /// credential rather than a path was echoed verbatim into the transcript, the agent log and the
+    /// repair prompt.
     /// <para>
     /// A record rather than two locals per call site: the whole failure was one value used for two
     /// purposes, and naming both purposes once makes the mix-up visible at every use.
@@ -141,7 +140,7 @@ public sealed partial class PlanExecutor
         string executable;
 
         // What the log is allowed to say. Identical to `executable` unless the path came from a
-        // variable holding clipboard or prompt text — re-audit finding B.
+        // variable holding clipboard or prompt text.
         string loggableExecutable;
 
         if (action.App is { } app)
@@ -196,8 +195,8 @@ public sealed partial class PlanExecutor
             .LaunchAsync(executable, argv, working?.Value, token)
             .ConfigureAwait(false);
 
-        // argv is counted, never listed — it may hold clipboard text too, and a count is all the log
-        // needs to explain what happened.
+        // argv is counted, never listed — it may hold clipboard text too, and a count is all the
+        // log needs to explain what happened.
         return (StepOutcome.Succeeded,
             argv.Count == 0
                 ? $"Launched {loggableExecutable}."
@@ -210,8 +209,8 @@ public sealed partial class PlanExecutor
     /// <remarks>
     /// The count and the tree warning are both there because this is the last thing between a plan
     /// and unsaved work. <c>force</c> uses <c>Kill(entireProcessTree: true)</c>, which is a very
-    /// different act from asking a window to close, and the old prompt worded them identically apart
-    /// from three words.
+    /// different act from asking a window to close, and the old prompt worded them identically
+    /// apart from three words.
     /// </remarks>
     private static string Question(string processName, int matching, bool force)
     {
@@ -229,11 +228,10 @@ public sealed partial class PlanExecutor
     {
         var force = action.Force == true;
 
-        // Counted before asking. Security review 2026-08-17, finding L3: the prompt said "Close
-        // chrome?" while the terminate killed every process of that name — routinely a dozen for a
-        // browser or an editor, and with force it takes each one's child processes too. A prompt that
-        // understates what it is about to do is worse than no prompt, because the user learns to
-        // trust it.
+        // Counted before asking. The prompt used to say "Close chrome?" while the terminate killed
+        // every process of that name — routinely a dozen for a browser or an editor, and with force
+        // it takes each one's child processes too. A prompt that understates what it is about to do
+        // is worse than no prompt, because the user learns to trust it.
         var matching = await desktop.Processes
             .CountAsync(action.ProcessName, token)
             .ConfigureAwait(false);
@@ -259,8 +257,8 @@ public sealed partial class PlanExecutor
             .TerminateAsync(action.ProcessName, force, token)
             .ConfigureAwait(false);
 
-        // The count is reported, not assumed: a process can exit or refuse between the count and the
-        // kill, and "Terminated chrome." said nothing about how much actually happened.
+        // The count is reported, not assumed: a process can exit or refuse between the count and
+        // the kill, and "Terminated chrome." said nothing about how much actually happened.
         return (StepOutcome.Succeeded,
             closed == 1
                 ? $"Closed 1 {action.ProcessName} process."
@@ -294,9 +292,10 @@ public sealed partial class PlanExecutor
     /// Characters typed between hazard checks.
     /// </summary>
     /// <remarks>
-    /// Typing paces at 5 ms per character, so 32 is a check roughly every 160 ms — often enough that
-    /// a window taking focus gets at most a few characters, cheap enough not to matter: the check is
-    /// a handful of syscalls against a payload that is already spending 160 ms in <c>SendInput</c>.
+    /// Typing paces at 5 ms per character, so 32 is a check roughly every 160 ms — often enough
+    /// that a window taking focus gets at most a few characters, cheap enough not to matter: the
+    /// check is a handful of syscalls against a payload that is already spending 160 ms in
+    /// <c>SendInput</c>.
     /// </remarks>
     private const int TypingRecheckChars = 32;
 
@@ -307,8 +306,8 @@ public sealed partial class PlanExecutor
 
         for (var i = 0; i < repeat; i++)
         {
-            // Every iteration, not just the first. Security review 2026-08-17, finding M7: repeat
-            // goes to 50, and the guard used to be checked once before the whole run of them.
+            // Every iteration, not just the first: repeat goes to 50, and the guard used to be
+            // checked once before the whole run of them.
             //
             // Hazards only, deliberately — no foreground-identity check, which type_text does get.
             // Changing the foreground window can be the entire point of a chord: Alt+Tab, Win+D,
@@ -339,13 +338,13 @@ public sealed partial class PlanExecutor
         }
 
         // The window the text is aimed at, recorded once the guard has approved it. Unlike a chord,
-        // typing never intends to change which window is in front, so a change partway through means
-        // the rest of the payload would land somewhere nobody chose.
+        // typing never intends to change which window is in front, so a change partway through
+        // means the rest of the payload would land somewhere nobody chose.
         var aimedAt = await desktop.Input.ForegroundWindowIdAsync(token).ConfigureAwait(false);
 
-        // Typed in chunks, with the guard re-run between them. Security review 2026-08-17, finding
-        // M7: a 2 000-character payload paces at 5 ms per character, so the single check that used to
-        // guard the whole thing was ten seconds stale by the end of it.
+        // Typed in chunks, with the guard re-run between them. A 2 000-character payload paces at 5
+        // ms per character, so the single check that used to guard the whole thing was ten seconds
+        // stale by the end of it.
         for (var sent = 0; sent < text.Length; sent += TypingRecheckChars)
         {
             if (sent > 0
@@ -444,8 +443,8 @@ public sealed partial class PlanExecutor
         var found = await list(path.Value).ConfigureAwait(false);
         run.Variables.SetList(into, found);
 
-        // The items themselves are not listed, only counted. They are filesystem contents rather than
-        // plan text, and a folder's file names are the sort of thing PLAN.md item 7 is about.
+        // The items themselves are not listed, only counted. They are filesystem contents rather
+        // than plan text, and a folder's file names are the sort of thing PLAN.md item 7 is about.
         return (StepOutcome.Succeeded, $"Found {found.Count} item(s) in {path.Loggable}.");
     }
 
@@ -475,11 +474,11 @@ public sealed partial class PlanExecutor
             return (StepOutcome.Failed, $"Refused to open: {reason}");
         }
 
-        // The path guard answers "is this under an allowed root", and the default root is the user's
-        // profile — which includes Downloads and AppData\Local\Temp. Security review 2026-08-17,
-        // finding M9: that made open_path an unrestricted ShellExecute over every directory another
-        // process can drop a file into. Checked here rather than in the Windows layer so it holds
-        // against FakeDesktop too, and so one place decides.
+        // The path guard answers "is this under an allowed root", and the default root is the
+        // user's profile — which includes Downloads and AppData\Local\Temp. That made open_path an
+        // unrestricted ShellExecute over every directory another process can drop a file into.
+        // Checked here rather than in the Windows layer so it holds against FakeDesktop too, and so
+        // one place decides.
         if (!Core.Policy.ShellOpen.IsAllowed(path.Value, path.Loggable, out var refusal))
         {
             return (StepOutcome.Failed, $"Refused to open: {refusal}");
@@ -496,9 +495,8 @@ public sealed partial class PlanExecutor
     {
         var text = await desktop.Clipboard.ReadAsync(token).ConfigureAwait(false);
 
-        // Marked as coming from outside the plan, so no log line can ever render it — security
-        // review 2026-08-17, finding M8. Redacting it here and then interpolating it into
-        // abort.reason was the hole.
+        // Marked as coming from outside the plan, so no log line can ever render it. Redacting it
+        // here and then interpolating it into abort.reason was the hole.
         run.Variables.SetTextFromOutsideThePlan(action.Into, text);
 
         // Contents redacted — safety control 6.

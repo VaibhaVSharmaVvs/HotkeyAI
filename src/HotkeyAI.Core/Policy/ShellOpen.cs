@@ -5,13 +5,13 @@ namespace HotkeyAI.Core.Policy;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Security review 2026-08-17, finding M9. <c>open_path</c> was an unrestricted ShellExecute
-/// bounded only by the path guard, and the guard's question is "is this under an allowed root" —
-/// which for the default root, the user's profile, includes <c>Downloads</c> and
+/// <c>open_path</c> was once an unrestricted ShellExecute bounded only by the path guard, and the
+/// guard's question is "is this under an allowed root" — which for the default root, the user's
+/// profile, includes <c>Downloads</c> and
 /// <c>AppData\Local\Temp</c>: every directory a browser or another process can drop a file into.
 /// </para>
 /// <para>
-/// The shape the review demonstrated validates clean and is the whole problem: <c>list_files</c>
+/// The amplifying shape validates clean and is the whole problem: <c>list_files</c>
 /// over <c>Downloads</c> with pattern <c>*</c>, then <c>foreach</c> → <c>open_path
 /// ${f.fullPath}</c>. An automation the user approved as "open my downloads" executes whatever an
 /// attacker put there, and the preview they approved said nothing that would have warned them.
@@ -36,8 +36,8 @@ public static class ShellOpen
     /// and <c>.jse</c>/<c>.wsf</c>/<c>.vbs</c> are the classic mail-worm formats that still work.
     /// <para>
     /// A blocklist, which is the shape this control cannot avoid: an allowlist of openable document
-    /// types would refuse most of what a real automation legitimately opens, and a folder — which is
-    /// what nearly every plan in the corpus opens — has no extension at all.
+    /// types would refuse most of what a real automation legitimately opens, and a folder — which
+    /// is what nearly every plan in the corpus opens — has no extension at all.
     /// </para>
     /// </remarks>
     public static IReadOnlySet<string> ExecutableExtensions { get; } =
@@ -62,9 +62,8 @@ public static class ShellOpen
     /// </summary>
     /// <param name="path">The resolved path. This is what gets checked.</param>
     /// <param name="display">
-    /// The same path with anything from outside the plan redacted — what the refusal quotes, since a
-    /// refusal becomes a log line. Security re-audit 2026-08-17, finding B.
-    /// </param>
+    /// The same path with anything from outside the plan redacted — what the refusal quotes, since
+    /// a refusal becomes a log line. </param>
     /// <param name="reason">Why it was refused, when it was.</param>
     public static bool IsAllowed(string? path, string? display, out string reason)
     {

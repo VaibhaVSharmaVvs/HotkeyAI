@@ -9,15 +9,15 @@ namespace HotkeyAI.Engine.Tests;
 /// The transcript says what actually stopped the run, and always says something.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, findings L6 and L10. The transcript is not decoration: PLAN.md
+/// The transcript is not decoration: PLAN.md
 /// expects people to paste it into a repair prompt, so a sentence that is confidently wrong sends
 /// both the reader and a planner after the wrong thing, and a missing sentence leaves them with
 /// nothing at all.
 /// <para>
-/// L6 — the cancellation reason was hardcoded to "Stopped by the panic key." for any cancellation,
-/// so the dashboard's Stop button produced a transcript blaming a key nobody pressed. L10 — the
-/// generic-exception path stopped the run without writing a log entry, so the transcript simply
-/// ended.
+/// Two separate faults. The cancellation reason was hardcoded to "Stopped by the panic key." for
+/// any cancellation, so the dashboard's Stop button produced a transcript blaming a key nobody
+/// pressed. And the generic-exception path stopped the run without writing a log entry, so the
+/// transcript simply ended.
 /// </para>
 /// </remarks>
 public sealed class TranscriptHonestyTests
@@ -52,7 +52,7 @@ public sealed class TranscriptHonestyTests
         return desktop;
     }
 
-    // ------------------------------- L6 -------------------------------
+    // --------------------------- what stopped the run ---------------------------
 
     [Fact]
     public async Task TheCallerDecidesWhatStoppedIt()
@@ -97,8 +97,9 @@ public sealed class TranscriptHonestyTests
     [Fact]
     public async Task ADescriberThatThrowsDoesNotBecomeTheFailure()
     {
-        // It runs on the abort path, where an exception would replace a clean abort — and the modifier
-        // release has already happened by then, so losing the rest would be a stuck Ctrl key.
+        // It runs on the abort path, where an exception would replace a clean abort — and the
+        // modifier release has already happened by then, so losing the rest would be a stuck Ctrl
+        // key.
         using var stop = new CancellationTokenSource();
         var desktop = CancellingOnFirstEffect(stop);
 
@@ -125,17 +126,17 @@ public sealed class TranscriptHonestyTests
         Assert.Equal("Stopped before it finished.", result.FailureReason);
     }
 
-    // ------------------------------- L10 -------------------------------
+    // ------------------------- an unexpected engine error -------------------------
 
     /// <summary>
     /// A plan whose postcondition asks about a process, so a throwing desktop escapes the
     /// per-action catch.
     /// </summary>
     /// <remarks>
-    /// An exception from a dispatch is caught per action and reported as one failed step, by design —
-    /// "one bad action must not abort the whole agent". So it never reaches the run-level handler this
-    /// finding is about. Verification runs outside that guard, which is the shortest honest route to
-    /// it, and is itself a realistic failure: the Win32 process APIs can throw.
+    /// An exception from a dispatch is caught per action and reported as one failed step, by design
+    /// — "one bad action must not abort the whole agent". So it never reaches the run-level handler
+    /// this finding is about. Verification runs outside that guard, which is the shortest honest
+    /// route to it, and is itself a realistic failure: the Win32 process APIs can throw.
     /// </remarks>
     private const string NotifyThenVerify = """
         { "type": "notify", "id": "a1", "message": "one",
@@ -182,8 +183,8 @@ public sealed class TranscriptHonestyTests
     [Fact]
     public async Task TheAbortLineIsTheLastThingInTheTranscript()
     {
-        // Order matters for a log someone reads top to bottom: the explanation has to come after the
-        // steps it explains, not before them.
+        // Order matters for a log someone reads top to bottom: the explanation has to come after
+        // the steps it explains, not before them.
         var desktop = new FakeDesktop
         {
             ProcessCheckThrows = new InvalidOperationException("boom"),

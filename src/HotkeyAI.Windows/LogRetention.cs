@@ -5,9 +5,9 @@ namespace HotkeyAI.Windows;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Security review 2026-08-17, finding L2. Logs accumulated one file per day, kept for as long as the
-/// machine lasted, each holding the window titles and file paths PLAN.md item 7 flags as
-/// PII/confidential-adjacent under SOC2/ISO 27001. "The record that exists" and "the record that
+/// Logs used to accumulate one file per day, kept for as long as the machine lasted, each holding
+/// the window titles and file paths PLAN.md item 7 flags as PII/confidential-adjacent under
+/// SOC2/ISO 27001. "The record that exists" and "the record that
 /// exists indefinitely" are different things, and only the first was ever a requirement.
 /// </para>
 /// <para>
@@ -23,16 +23,16 @@ public static class LogRetention
     /// </summary>
     /// <remarks>
     /// Two weeks, chosen against what the log is for: diagnosing an automation that misbehaved, and
-    /// pasting a transcript into a repair prompt. Both happen within days of the run. Anything older
-    /// is a liability with no reader.
+    /// pasting a transcript into a repair prompt. Both happen within days of the run. Anything
+    /// older is a liability with no reader.
     /// </remarks>
     public static TimeSpan Window { get; } = TimeSpan.FromDays(14);
 
     /// <summary>Delete logs past their retention, returning how many went.</summary>
     /// <remarks>
     /// Called at agent startup rather than on a timer. The agent is long-lived but it is also
-    /// restarted often enough — every sign-in, every update — and a timer would be a second thing to
-    /// get wrong for a job with no deadline.
+    /// restarted often enough — every sign-in, every update — and a timer would be a second thing
+    /// to get wrong for a job with no deadline.
     /// </remarks>
     public static int Prune() => Prune(AgentPaths.Logs, DateOnly.FromDateTime(DateTime.Now));
 
@@ -79,9 +79,9 @@ public static class LogRetention
     /// The day a log file is for, from its name, or null if the name is not one of ours.
     /// </summary>
     /// <remarks>
-    /// Handles both <c>agent-2026-08-17.log</c> and the rolled <c>agent-2026-08-17.2.log</c>. Anything
-    /// else in the folder is left alone — deleting a file whose name this code does not understand is
-    /// how a log folder someone repurposed loses something that mattered.
+    /// Handles both <c>agent-2026-08-17.log</c> and the rolled <c>agent-2026-08-17.2.log</c>.
+    /// Anything else in the folder is left alone — deleting a file whose name this code does not
+    /// understand is how a log folder someone repurposed loses something that mattered.
     /// </remarks>
     public static DateOnly? DateFromName(string path)
     {

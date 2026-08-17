@@ -62,10 +62,10 @@ public static class HotkeyChord
     /// </summary>
     /// <remarks>
     /// Here rather than only in the agent, because <see cref="Problems"/> is the one rule the
-    /// validator, the CLI and the dashboard all consult. Security review 2026-08-17, finding H4:
-    /// the dashboard refused this chord when captured through the UI while the validator accepted
-    /// it in hand-authored JSON — and hand-authored JSON is V1's primary authoring path, so the
-    /// rule existed everywhere except the road people actually use. That is exactly the drift this
+    /// validator, the CLI and the dashboard all consult. The dashboard used to refuse this chord
+    /// when captured through the UI while the validator accepted it in hand-authored JSON — and
+    /// hand-authored JSON is V1's primary authoring path, so the rule existed everywhere except
+    /// the road people actually use. That is exactly the drift this
     /// type was extracted to prevent.
     /// </remarks>
     public static IReadOnlyList<KeyName> Panic { get; } =

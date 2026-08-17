@@ -10,14 +10,14 @@ namespace HotkeyAI.Engine.Tests;
 /// The sensitive-window guard runs throughout a piece of input, not once before it.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding M7. BlockedAsync was called once and the whole operation then
-/// handed to the Windows layer, where SendChordAsync looped up to <c>repeat</c> times (policy maximum
-/// 50) and TypeTextAsync sent one character every 5 ms — so a 2 000-character payload occupied the
-/// foreground for ten seconds after a single check. Anything taking focus in that window received the
-/// remainder: a UAC prompt appearing, the user alt-tabbing to their password manager.
+/// BlockedAsync used to be called once, with the whole operation then handed to the Windows layer,
+/// where SendChordAsync looped up to <c>repeat</c> times (policy maximum 50) and TypeTextAsync sent
+/// one character every 5 ms — so a 2 000-character payload occupied the foreground for ten seconds
+/// after a single check. Anything taking focus in that window received the remainder: a UAC prompt
+/// appearing, the user alt-tabbing to their password manager.
 /// <para>
-/// Both loops moved up into the executor, which is where the safety controls live. A loop inside the
-/// Windows layer is a loop the controls cannot see into.
+/// Both loops moved up into the executor, which is where the safety controls live. A loop inside
+/// the Windows layer is a loop the controls cannot see into.
 /// </para>
 /// </remarks>
 public sealed class InputGuardTests
@@ -58,8 +58,8 @@ public sealed class InputGuardTests
     {
         var desktop = new FakeDesktop();
 
-        // A consent prompt arrives after the second chord — the case the single up-front check could
-        // not see, because by then it had already returned.
+        // A consent prompt arrives after the second chord — the case the single up-front check
+        // could not see, because by then it had already returned.
         desktop.OnEffect = effect =>
         {
             if (effect.StartsWith("keys:", StringComparison.Ordinal)
@@ -135,8 +135,8 @@ public sealed class InputGuardTests
     public async Task FocusMovingMidTypingStopsTheRest()
     {
         // The hazards recognise a *dangerous* new window. This is the other case: a perfectly
-        // ordinary window that came to the front, which Windows will happily deliver the rest of the
-        // payload to. Nothing caught it before.
+        // ordinary window that came to the front, which Windows will happily deliver the rest of
+        // the payload to. Nothing caught it before.
         var desktop = new FakeDesktop { ForegroundWindowId = 1 };
 
         desktop.OnEffect = effect =>

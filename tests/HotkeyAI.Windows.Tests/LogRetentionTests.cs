@@ -6,9 +6,9 @@ namespace HotkeyAI.Windows.Tests;
 /// Logs stop existing eventually, and only the ones this code understands are deleted.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding L2. Logs accumulated one file per day, kept for as long as the
-/// machine lasted, each holding the window titles and file paths PLAN.md item 7 flags as
-/// PII/confidential-adjacent. Nothing rotated, retained or pruned them.
+/// Logs used to accumulate one file per day, kept for as long as the machine lasted, each holding
+/// the window titles and file paths PLAN.md item 7 flags as PII/confidential-adjacent. Nothing
+/// rotated, retained or pruned them.
 /// <para>
 /// The dangerous half of a retention rule is the deleting, so most of these are about what it must
 /// leave alone.

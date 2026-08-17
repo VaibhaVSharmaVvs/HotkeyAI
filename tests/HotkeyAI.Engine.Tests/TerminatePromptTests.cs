@@ -9,14 +9,14 @@ namespace HotkeyAI.Engine.Tests;
 /// The confirmation prompt says how much it is about to close.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding L3. The prompt read "Close chrome?" while the terminate killed
+/// The prompt used to read "Close chrome?" while the terminate killed
 /// every process of that name — routinely a dozen for a browser or an editor — and with
 /// <c>force</c> it takes each one's child processes too, via
 /// <c>Kill(entireProcessTree: true)</c>. A prompt that understates what it is about to do is worse
 /// than no prompt, because the user learns to trust it.
 /// <para>
-/// The review also noted prompt fatigue: this prompts every run rather than remembering a yes, which
-/// is deliberate — the user is approving this kill against whatever is currently open, and a
+/// Prompt fatigue is the counter-argument: this prompts every run rather than remembering a yes,
+/// which is deliberate — the user is approving this kill against whatever is currently open, and a
 /// remembered yes was given to a different desktop. What it should not do is prompt when there is
 /// nothing to close, which is how the reflex to click through gets trained.
 /// </para>
@@ -113,8 +113,8 @@ public sealed class TerminatePromptTests
     [Fact]
     public async Task TheLogSaysHowManyActuallyClosed()
     {
-        // "Terminated chrome." said nothing about how much happened, and a process can exit or refuse
-        // between the count and the kill.
+        // "Terminated chrome." said nothing about how much happened, and a process can exit or
+        // refuse between the count and the kill.
         var desktop = new FakeDesktop { RunningProcesses = { "chrome" } };
         desktop.ProcessCounts["chrome"] = 4;
 

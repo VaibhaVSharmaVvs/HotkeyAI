@@ -48,7 +48,7 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
     /// <summary>How many times the sensitive-window guard has been consulted.</summary>
     /// <remarks>
     /// Counted so a test can assert the guard runs *during* a long piece of input and not only
-    /// before it — security review 2026-08-17, finding M7.
+    /// before it.
     /// </remarks>
     public int HazardChecks { get; private set; }
 
@@ -122,8 +122,8 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
     /// <remarks>
     /// A hook here rather than on <c>OnEffect</c> because it has to fire somewhere the executor's
     /// per-action catch cannot see: an exception from a dispatch is reported as one failed step, by
-    /// design, and never reaches the run-level handler that security review 2026-08-17 finding L10 is
-    /// about. Verification runs outside that guard, so a postcondition asking about a process is the
+    /// design, and never reaches the run-level handler this is about. Verification runs outside
+    /// that guard, so a postcondition asking about a process is the
     /// shortest honest route to it.
     /// </remarks>
     public Exception? ProcessCheckThrows { get; set; }
@@ -137,7 +137,7 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
     /// How many processes a name stands for. One unless a test says otherwise.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding L3: the confirmation prompt said "Close chrome?" while the
+    /// The confirmation prompt used to say "Close chrome?" while the
     /// terminate killed every process of that name. Testing the corrected prompt needs a fake that
     /// can have more than one.
     /// </remarks>
@@ -285,8 +285,8 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
     /// <summary>The last question the user was asked, or null if they were never asked.</summary>
     /// <remarks>
     /// Kept separately from <see cref="Effects"/> because the wording is the thing under test for
-    /// security review 2026-08-17 finding L3, and picking it back out of an effect string would mean
-    /// the test asserting on a prefix it does not care about.
+    /// these tests, and picking it back out of an effect string would mean the test asserting on a
+    /// prefix it does not care about.
     /// </remarks>
     public string? ConfirmQuestion { get; private set; }
 

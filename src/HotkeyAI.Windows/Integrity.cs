@@ -24,7 +24,7 @@ internal static class Integrity
     /// Byte offset of a SID's last sub-authority, or -1 if the count makes no sense.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding L8. This was inline and unguarded, so a count of zero
+    /// This used to be inline and unguarded, so a count of zero
     /// computed <c>8 + (-1 * 4) = 4</c> and read four bytes out of the middle of the SID's own
     /// header — an identifier-authority fragment, returned as though it were an integrity level. A
     /// count above fifteen read past the end of the structure entirely.
@@ -36,9 +36,9 @@ internal static class Integrity
     /// </para>
     /// <para>
     /// Unknown resolves to "not higher than us", which is this file's existing posture for a failed
-    /// read: access denied is evidence of elevation and nothing else is. Stated rather than assumed,
-    /// because it is a fail-open choice — but the alternative refuses input to any window whose token
-    /// cannot be classified, which on a normal desktop is a great many of them.
+    /// read: access denied is evidence of elevation and nothing else is. Stated rather than
+    /// assumed, because it is a fail-open choice — but the alternative refuses input to any window
+    /// whose token cannot be classified, which on a normal desktop is a great many of them.
     /// </para>
     /// </remarks>
     internal static int SubAuthorityOffset(byte subAuthorities) =>

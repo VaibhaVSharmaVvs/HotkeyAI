@@ -430,8 +430,7 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
    `AppData\Local\Temp` — directories another process can write to. It refuses anything Windows
    *executes* rather than opens (`.exe .bat .ps1 .lnk .url .hta .msi .reg .scr .cpl` and the
    rest), at validation for a literal path and at execution for an interpolated one, since only
-   the second can be checked when the path comes from a variable (security review 2026-08-17,
-   finding M9).
+   the second can be checked when the path comes from a variable.
 3. **Sensitive-window guard.** Before *and throughout* any `send_keys` / `type_text`, check the
    foreground window: refuse if it is a UAC consent dialog, a credential prompt, or a focused
    edit control carrying the `ES_PASSWORD` style. Detect and report integrity mismatch rather
@@ -439,10 +438,9 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
 
    Throughout, because typing paces at 5 ms per character and `repeat` reaches 50 — one check
    before a long payload is stale long before the payload ends. The executor owns both loops and
-   re-checks every 32 characters and between every repeat (security review 2026-08-17, finding
-   M7). `type_text` additionally refuses if the foreground window merely *changed*, since typing
-   never intends to move focus; `send_keys` does not, because a chord often does — Alt+Tab,
-   Win+D, Ctrl+W on the last tab.
+   re-checks every 32 characters and between every repeat. `type_text` additionally refuses if
+   the foreground window merely *changed*, since typing never intends to move focus; `send_keys`
+   does not, because a chord often does — Alt+Tab, Win+D, Ctrl+W on the last tab.
 
    The password-style check reads the focused control's style through `GetGUIThreadInfo`, so it
    covers Win32 and WinForms — superclassed classes included. It does **not** cover WPF,
@@ -450,7 +448,7 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
    only UI Automation can see it; UIA would mean a framework reference this project deliberately
    avoids, and a cross-process call on the hotkey path. Stated here rather than left implied,
    because a control described more broadly than it is implemented is worse than a narrow one
-   honestly described (security review 2026-08-17, finding M6).
+   honestly described.
 4. **Trust-on-first-use for automation files.** Store under `%LOCALAPPDATA%` with a per-user
    ACL and HMAC each file with a key in DPAPI. An unsigned or changed file is **loaded
    disabled and marked unverified**, never refused outright, and never run until the user has
@@ -460,7 +458,7 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
 
    The ACL is set rather than inherited. `%LOCALAPPDATA%` does inherit a reasonable one — SYSTEM,
    Administrators and the user — so this control held by accident before, which is the kind that
-   nobody notices going away (security review 2026-08-17, finding L7). A new store is created with
+   nobody notices going away. A new store is created with
    a protected DACL granting only this user and SYSTEM; an existing one is left alone, because
    overruling whatever the user or their IT department configured risks locking someone out of
    their own automations. Either way the agent audits it at startup and `hotkeyai list` warns if
@@ -476,7 +474,7 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
    open, rather than the idea of killing things — and a remembered yes is a yes given to a
    different desktop. The review's counter-point is real, though, so the prompt does not fire when
    nothing matches: a prompt that appears when there is nothing to close is exactly how the reflex
-   to click through gets trained (security review 2026-08-17, finding L3).
+   to click through gets trained.
 6. **Never log secrets.** Execution logs record action ids and outcomes, and redact
    `type_text` payloads and clipboard content by default. This matters more in V1 than V2 —
    you will be pasting logs into a repair prompt by hand.
@@ -485,15 +483,15 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
    `get_clipboard` or `show_input` is marked as coming from outside the plan, and `abort.reason`
    — the one field whose interpolated text becomes a log line — renders it as
    `[name redacted]`. Redacting the two sources and then interpolating one of them into a step
-   detail was the hole (security review 2026-08-17, finding M8). Window titles and picked paths
+   detail was the hole. Window titles and picked paths
    are still logged; that is a deliberate limit, and item 7's retention question covers it.
 7. **No egress in V1.** Nothing leaves the machine; the authoring bridge is filesystem and a
    local pipe. Before V2's API mode ships, add path/title redaction at the boundary — prompts
    and repair bundles will otherwise carry file paths and window titles.
 
    Retention is implemented, redaction is not, and the split is deliberate. Logs are pruned after
-   14 days and a runaway day rolls at 8 MB instead of growing without limit (security review
-   2026-08-17, finding L2) — two weeks covers both reasons anyone opens a log, and nothing older
+   14 days and a runaway day rolls at 8 MB instead of growing without limit — two weeks covers
+   both reasons anyone opens a log, and nothing older
    has a reader. What is still logged in clear is window titles and picked paths. Redacting those
    would gut the log's only purpose, which is telling someone why an automation did the wrong
    thing; the answer is the boundary redaction above, at the point where the data would leave the

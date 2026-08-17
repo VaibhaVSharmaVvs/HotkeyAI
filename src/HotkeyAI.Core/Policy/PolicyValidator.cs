@@ -97,12 +97,12 @@ public static partial class PolicyValidator
     {
         if (all.Count == 0)
         {
-            // Security review 2026-08-17, finding L11. An empty plan validated, was approvable, and
-            // bound a global chord that did nothing — and a chord is process-wide and
-            // first-come-first-served, so it also took that combination away from whatever else on
-            // the machine wanted it. Refused rather than warned because there is no ValidationResult
-            // severity below "error", and a plan with no actions is a mistake in every case: nobody
-            // writes one on purpose, and the honest reading of one is an edit that went wrong.
+            // An empty plan used to validate, be approvable, and bind a global chord that did
+            // nothing — and a chord is process-wide and first-come-first-served, so it also took
+            // that combination away from whatever else on the machine wanted it. Refused rather
+            // than warned because there is no ValidationResult severity below "error", and a plan
+            // with no actions is a mistake in every case: nobody writes one on purpose, and the
+            // honest reading of one is an edit that went wrong.
             errors.Add(Error(
                 "/actions",
                 "This plan has no actions, so its hotkey would do nothing while still claiming "
@@ -263,13 +263,13 @@ public static partial class PolicyValidator
     /// Check every literal path in an action, not just the one on <c>launch_process</c>.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding L1. Out-of-root literals on <c>open_path</c>,
-    /// <c>list_files</c>, <c>list_directories</c>, <c>path_exists</c>, <c>workingDirectory</c> and
-    /// <c>expect.path_exists</c> all validated clean and failed only at run time — a plan the user
-    /// could approve and that could never work. The runtime guard held, so this is honesty rather
-    /// than a hole, and the honesty matters most on the approval screen: someone reading a preview
-    /// is being asked whether to trust a plan, and "this cannot run" is something they should learn
-    /// then rather than on the keypress.
+    /// This used to cover <c>launch_process.path</c> alone. Out-of-root literals on
+    /// <c>open_path</c>, <c>list_files</c>, <c>list_directories</c>, <c>path_exists</c>,
+    /// <c>workingDirectory</c> and <c>expect.path_exists</c> validated clean and failed only at run
+    /// time — a plan the user could approve and that could never work. The runtime guard held, so
+    /// this is honesty rather than a hole, and the honesty matters most on the approval screen:
+    /// someone reading a preview is being asked whether to trust a plan, and "this cannot run" is
+    /// something they should learn then rather than on the keypress.
     /// <para>
     /// Only when roots are configured. With none, the run-time guard refuses every path anyway, and
     /// a validator that rejected every literal under <see cref="PolicyOptions.Default"/> would be
@@ -328,8 +328,8 @@ public static partial class PolicyValidator
     /// <remarks>
     /// Found by JSON name — <c>path</c> and <c>workingDirectory</c> — rather than by naming the
     /// records, for the reason the rest of this file gives: a primitive added later is covered
-    /// without anyone remembering to come back here. There is no field called <c>path</c> in the DSL
-    /// that is not a filesystem path, and a postcondition or predicate carrying one is reached
+    /// without anyone remembering to come back here. There is no field called <c>path</c> in the
+    /// DSL that is not a filesystem path, and a postcondition or predicate carrying one is reached
     /// through the same walk.
     /// </remarks>
     private static IEnumerable<(string Path, string Literal)> Paths(object value, string path)
@@ -385,11 +385,11 @@ public static partial class PolicyValidator
     /// Refuse an <c>open_path</c> whose literal path is something Windows executes.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding M9. The executor refuses it too, and has to — a path built
-    /// from a variable is only known at run time, which is exactly the amplifying shape the review
-    /// demonstrated. This half is about the other failure mode: a plan naming an <c>.exe</c> outright
-    /// used to validate clean and be approvable, so the user's yes was given to something that could
-    /// never have been allowed to run.
+    /// The executor refuses it too, and has to — a path built from a variable is only known at run
+    /// time, which is the amplifying shape that matters: <c>list_files</c> over a folder anyone can
+    /// write to, then <c>foreach</c> → <c>open_path</c>. This half is about the other failure mode:
+    /// a plan naming an <c>.exe</c> outright used to validate clean and be approvable, so the
+    /// user's yes was given to something that could never have been allowed to run.
     /// </remarks>
     private static void CheckOpen(string path, HotkeyAction action, List<ValidationError> errors)
     {
@@ -425,7 +425,7 @@ public static partial class PolicyValidator
     /// Refuse a <c>titleRegex</c> the engine cannot run safely.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding M4. The engine matches titles on .NET's non-backtracking
+    /// The engine matches titles on .NET's non-backtracking
     /// engine, which is linear in the input and therefore immune to catastrophic backtracking —
     /// but it refuses lookaround, backreferences and atomic groups, and it refuses them by throwing
     /// when the pattern is constructed. Discovering that on a keypress would mean an automation the
@@ -564,12 +564,11 @@ public static partial class PolicyValidator
         }
 
         var assigned = new HashSet<string>(StringComparer.Ordinal);
-        // Maps a foreach item variable to the pointer of the loop that owns it, so a read can
-        // be told apart from a read *after* the loop. Security review 2026-08-17, finding M3: this
-        // was a HashSet that nothing ever read, so the rule the doc comment above states plainly —
-        // and which the executor enforces at run time by clearing the variable — was never checked.
-        // A plan reading a loop variable afterwards validated clean and then silently interpolated
-        // an empty string.
+        // Maps a foreach item variable to the pointer of the loop that owns it, so a read can be
+        // told apart from a read *after* the loop. This was a HashSet that nothing ever read, so
+        // the rule the doc comment above states plainly — and which the executor enforces at run
+        // time by clearing the variable — was never actually checked. A plan reading a loop
+        // variable afterwards validated clean and then silently interpolated an empty string.
         var loopScoped = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var (path, action, _) in all)
@@ -826,14 +825,14 @@ public static partial class PolicyValidator
     /// Variables an action's postcondition reads, which happens after its own write.
     /// </summary>
     /// <remarks>
-    /// Split out because sequence matters and the two halves sit on opposite sides of the write.
-    /// An action never reads the variable it is about to write — but its <c>expect</c> runs once the
-    /// action has succeeded, so <c>get_clipboard</c> into <c>got</c> with
-    /// <c>expect: clipboard_matches contains ${got}</c> is not only legal, it is the natural way to
-    /// verify a clipboard write. Checking both halves before the write reported that as reading a
-    /// variable before anything assigned it.
+    /// Split out because sequence matters and the two halves sit on opposite sides of the write. An
+    /// action never reads the variable it is about to write — but its <c>expect</c> runs once the
+    /// action has succeeded, so <c>get_clipboard</c> into <c>got</c> with <c>expect:
+    /// clipboard_matches contains ${got}</c> is not only legal, it is the natural way to verify a
+    /// clipboard write. Checking both halves before the write reported that as reading a variable
+    /// before anything assigned it.
     /// <para>
-    /// Found by fixing M2: once expectations were visible to the dataflow walk at all, this
+    /// Found once expectations became visible to the dataflow walk at all: until then this
     /// ordering question appeared with them.
     /// </para>
     /// </remarks>
@@ -878,13 +877,13 @@ public static partial class PolicyValidator
     /// Every string an action carries, however deeply nested.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding M2. This handled <c>string</c>,
+    /// This once handled <c>string</c>,
     /// <c>IEnumerable&lt;string&gt;</c> and <see cref="WindowSelector"/>, and everything else fell
     /// through to nothing — so a <c>${...}</c> inside an <c>expect</c> or a predicate was invisible
     /// to the declaration and assignment checks, and a plan reading a variable nothing ever wrote
-    /// validated clean. That is what made finding M1 reachable from a valid plan: the executor then
-    /// interpolated the unwritten variable to an empty string and a vacuous check reported
-    /// "verified".
+    /// validated clean. That is what let a vacuous postcondition reach run time from a valid plan:
+    /// the executor interpolated the unwritten variable to an empty string, and a check that
+    /// compared against nothing reported "verified".
     /// <para>
     /// It is a false negative in the layer whose own comment says reflection was chosen over a
     /// switch precisely because "a missed case is a silent false negative". The fix keeps that

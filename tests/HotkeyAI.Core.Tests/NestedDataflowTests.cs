@@ -6,14 +6,14 @@ namespace HotkeyAI.Core.Tests;
 /// A variable read inside an expectation or a predicate counts as a read.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding M2. The dataflow check reflected over an action's own
+/// The dataflow check used to reflect over an action's own
 /// properties but only understood strings, string collections and window selectors — so nested
 /// postconditions and conditions fell through to nothing, and <c>${ghost}</c> inside them was
 /// invisible. A plan reading a variable nothing ever wrote validated clean.
 /// <para>
-/// That is what made finding M1 reachable from a valid plan: the executor interpolated the unwritten
-/// variable to the empty string and <c>contains: ""</c> reported "(verified)" while checking
-/// nothing.
+/// That is what let a vacuous postcondition reach run time from a valid plan: the executor
+/// interpolated the unwritten variable to the empty string, and <c>contains: ""</c> reported
+/// "(verified)" while checking nothing.
 /// </para>
 /// </remarks>
 public sealed class NestedDataflowTests
@@ -107,7 +107,7 @@ public sealed class NestedDataflowTests
     [Fact]
     public void ADeclaredButNeverWrittenVariableInsideAnExpectationIsStillCaught()
     {
-        // Declared is not the same as assigned, and the review's own probe used the declared case.
+        // Declared is not the same as assigned, and the declared case is the easier one to miss.
         var result = Check(
             """{ "name": "ghost", "type": "text" }""",
             """

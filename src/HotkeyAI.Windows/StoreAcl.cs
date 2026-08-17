@@ -8,22 +8,22 @@ namespace HotkeyAI.Windows;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Security review 2026-08-17, finding L7. PLAN.md control 4 specifies a per-user ACL on the store.
-/// <c>%LOCALAPPDATA%</c> inherits a reasonable one by default, so the control held in practice — but
-/// nothing set it, nothing asserted it, and a control that is true by accident is one nobody notices
-/// becoming false. An inherited ACL also follows whatever the parent says, which is not this
-/// application's decision to rely on.
+/// PLAN.md control 4 specifies a per-user ACL on the store. <c>%LOCALAPPDATA%</c> inherits a
+/// reasonable one by default, so the control held in practice — but nothing used to set it and
+/// nothing asserted it, and a control that is true by accident is one nobody notices becoming
+/// false. An inherited ACL also follows whatever the parent says, which is not this application's
+/// decision to rely on.
 /// </para>
 /// <para>
 /// What the store holds is worth this: the automations themselves — which run on a keypress — the
 /// approval records that decide whether they are trusted, and logs carrying window titles and file
-/// paths. Another standard user on a shared machine writing into the automations folder is the threat
-/// that matters, and it is exactly what an explicit DACL prevents.
+/// paths. Another standard user on a shared machine writing into the automations folder is the
+/// threat that matters, and it is exactly what an explicit DACL prevents.
 /// </para>
 /// <para>
-/// Administrators are not in the DACL. That is not a claim to resist them: an administrator can take
-/// ownership and rewrite it, and nothing at this level changes that. It removes casual access, which
-/// is the honest extent of what a file ACL can offer.
+/// Administrators are not in the DACL. That is not a claim to resist them: an administrator can
+/// take ownership and rewrite it, and nothing at this level changes that. It removes casual access,
+/// which is the honest extent of what a file ACL can offer.
 /// </para>
 /// </remarks>
 public static class StoreAcl
@@ -32,10 +32,10 @@ public static class StoreAcl
     /// Create the store root if it is missing, with a DACL granting only this user and SYSTEM.
     /// </summary>
     /// <remarks>
-    /// Only on creation. Rewriting the ACL of a directory that already exists would mean deciding, on
-    /// someone else's machine, that whatever they or their IT department configured is wrong — and
-    /// getting it wrong locks a user out of their own automations. New installs get the explicit
-    /// grant; existing ones get <see cref="Audit()"/>, which reports rather than acts.
+    /// Only on creation. Rewriting the ACL of a directory that already exists would mean deciding,
+    /// on someone else's machine, that whatever they or their IT department configured is wrong —
+    /// and getting it wrong locks a user out of their own automations. New installs get the
+    /// explicit grant; existing ones get <see cref="Audit()"/>, which reports rather than acts.
     /// </remarks>
     public static void EnsureRoot()
     {
@@ -62,14 +62,14 @@ public static class StoreAcl
     /// </summary>
     /// <remarks>
     /// Reported, never enforced. This is the "assert" half of the control: the agent logs it at
-    /// startup and the CLI shows it, so "the store is per-user" is something someone can check rather
-    /// than something the design merely intends.
+    /// startup and the CLI shows it, so "the store is per-user" is something someone can check
+    /// rather than something the design merely intends.
     /// </remarks>
     public static IReadOnlyList<string>? Audit() => Audit(AgentPaths.Root);
 
     /// <summary>
-    /// <see cref="Audit()"/> against a named directory, so the rule can be tested against a folder a
-    /// test controls rather than the user's real store.
+    /// <see cref="Audit()"/> against a named directory, so the rule can be tested against a folder
+    /// a test controls rather than the user's real store.
     /// </summary>
     internal static IReadOnlyList<string>? Audit(string directory)
     {

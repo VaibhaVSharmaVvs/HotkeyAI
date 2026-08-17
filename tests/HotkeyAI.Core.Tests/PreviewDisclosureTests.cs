@@ -9,7 +9,7 @@ namespace HotkeyAI.Core.Tests;
 /// The approval preview must disclose the whole payload.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding H1. The renderer elided <c>type_text</c> and
+/// The renderer used to elide <c>type_text</c> and
 /// <c>set_clipboard</c> at sixty characters, and the executor deliberately does not log typed
 /// text — correct, since it could be a password. The two together meant a longer payload appeared
 /// in full <em>nowhere</em>: not in the preview a human approves, not in the transcript

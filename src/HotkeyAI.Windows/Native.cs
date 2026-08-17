@@ -54,8 +54,8 @@ internal static partial class Native
     /// <summary>Which control has the keyboard focus, among other UI state of one thread.</summary>
     /// <remarks>
     /// The foreground window is not what receives typing — the focused child control is, and only
-    /// this call names it. Security review 2026-08-17, finding M6, needs it to see whether that
-    /// control carries the password style.
+    /// this call names it. The sensitive-window guard needs it to see whether that control carries
+    /// the password style.
     /// </remarks>
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -88,9 +88,9 @@ internal static partial class Native
     internal const int ES_PASSWORD = 0x0020;
 
     /// <remarks>
-    /// The 64-bit entry point, and the only one that exists in a 64-bit process — <c>GetWindowLongW</c>
-    /// is present too but truncates. The style bits fit in 32 bits either way; this is about being
-    /// spelled correctly rather than about the width.
+    /// The 64-bit entry point, and the only one that exists in a 64-bit process —
+    /// <c>GetWindowLongW</c> is present too but truncates. The style bits fit in 32 bits either
+    /// way; this is about being spelled correctly rather than about the width.
     /// </remarks>
     [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     internal static partial nint GetWindowLongPtr(nint window, int index);

@@ -6,14 +6,14 @@ namespace HotkeyAI.Core.Tests;
 /// A window-title pattern the engine cannot run safely is refused before it can be installed.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding M4. <c>WindowsWindows.Matches</c> guarded its regex with a
-/// 250 ms timeout and a <c>catch</c> filter naming a private marker class that nothing in the
-/// repository ever throws — so the real <see cref="System.Text.RegularExpressions.RegexMatchTimeoutException"/>
-/// escaped, aborted the window enumeration partway, and surfaced as a raw exception message.
+/// <c>WindowsWindows.Matches</c> used to guard its regex with a 250 ms timeout and a <c>catch</c>
+/// filter naming a private marker class that nothing in the repository ever throws — so the real
+/// <see cref="System.Text.RegularExpressions.RegexMatchTimeoutException"/> escaped, aborted the
+/// window enumeration partway, and surfaced as a raw exception message.
 /// <para>
-/// The engine now matches titles on .NET's non-backtracking engine, which is linear in the input, so
-/// no pattern can hang the sweep — a stronger answer than the review's suggested backtracking
-/// heuristic, because it is a guarantee rather than a guess. That engine refuses lookaround,
+/// The engine now matches titles on .NET's non-backtracking engine, which is linear in the input,
+/// so no pattern can hang the sweep — a stronger answer than a backtracking heuristic in the policy
+/// layer, because it is a guarantee rather than a guess. That engine refuses lookaround,
 /// backreferences and atomic groups, and refuses them when the pattern is constructed. Discovering
 /// that on a keypress would mean an automation the user approved failing at the moment they needed
 /// it, so these tests pin that the policy layer says so first, with a pointer.
@@ -110,7 +110,8 @@ public sealed class TitlePatternTests
     public void APatternInsideAnExpectationIsCheckedToo()
     {
         // The reflective walk exists for this: a selector can sit on the action, inside its expect,
-        // or inside a predicate, and naming those places one by one is how the next one gets missed.
+        // or inside a predicate, and naming those places one by one is how the next one gets
+        // missed.
         var result = PlanValidator.Validate(
             """
             {

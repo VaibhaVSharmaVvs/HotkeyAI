@@ -38,15 +38,15 @@ public sealed class PathGuard(IReadOnlyList<string> allowedRoots, IRealPath? rea
     /// </param>
     /// <param name="reason">Why it was refused, when it was.</param>
     /// <remarks>
-    /// Security re-audit 2026-08-17, finding B. The refusal message quoted the path it was given, and
-    /// that path can be clipboard text — the refusal fires for <em>any</em> value that is not a valid
-    /// in-root path, so a clipboard holding a credential rather than a path was echoed verbatim into
-    /// the transcript, the agent log and the repair prompt. Exactly what M1's redaction of
-    /// <c>get_clipboard</c> was for, undone by the error path beside it.
+    /// The refusal message used to quote the path it was given, and that path can be clipboard text
+    /// — the refusal fires for <em>any</em> value that is not a valid in-root path, so a clipboard
+    /// holding a credential rather than a path was echoed verbatim into the transcript, the agent
+    /// log and the repair prompt. Exactly what redacting <c>get_clipboard</c> was for, undone by
+    /// the error path beside it.
     /// <para>
-    /// Two parameters rather than one redacting call inside: the value that gets <em>checked</em> must
-    /// stay the real one, or the boundary is deciding about a string the OS will never see. Separating
-    /// them makes that impossible to get backwards by accident.
+    /// Two parameters rather than one redacting call inside: the value that gets <em>checked</em>
+    /// must stay the real one, or the boundary is deciding about a string the OS will never see.
+    /// Separating them makes that impossible to get backwards by accident.
     /// </para>
     /// </remarks>
     public bool IsAllowed(string path, string display, out string reason)
@@ -94,8 +94,7 @@ public sealed class PathGuard(IReadOnlyList<string> allowedRoots, IRealPath? rea
         // tested identically on Linux CI. But a string comparison cannot see a reparse point: a
         // directory junction created inside the allowed root, which needs no elevation to make,
         // points anywhere on the machine while every path through it still reads as being under
-        // the root. Security review 2026-08-17, finding H2, reproduced with a junction to
-        // System32.
+        // the root. Reproduced with a junction to System32.
         //
         // The real damage was not reach — the default root is the whole user profile, so an
         // approved plan can already launch anything in it — but that the approval preview *lied*:

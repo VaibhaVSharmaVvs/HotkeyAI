@@ -213,7 +213,7 @@ public sealed class AppResolver
     /// The location Windows itself uses when a bare name is typed into Run.
     /// </summary>
     /// <remarks>
-    /// Machine before user, and that order is the fix for security review 2026-08-17 finding H5.
+    /// Machine before user, and that order is load-bearing.
     /// It was the other way round, and HKCU is writable by any process running as the user — so
     /// malware could point <c>App Paths\notepad.exe</c> at its own binary and an automation
     /// approved months earlier, rendered as "Launch notepad", would launch it. This file already

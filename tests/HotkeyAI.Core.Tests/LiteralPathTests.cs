@@ -6,7 +6,7 @@ namespace HotkeyAI.Core.Tests;
 /// A literal path that can never work is refused before someone approves it.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding L1. The policy layer checked literal paths only on
+/// The policy layer used to check literal paths only on
 /// <c>launch_process.path</c>. Out-of-root literals on <c>open_path</c>, <c>list_files</c>,
 /// <c>list_directories</c>, <c>path_exists</c>, <c>workingDirectory</c> and
 /// <c>expect.path_exists</c> all validated clean and failed only at run time.

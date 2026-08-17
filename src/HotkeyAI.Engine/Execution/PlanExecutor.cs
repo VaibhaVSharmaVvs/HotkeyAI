@@ -66,9 +66,9 @@ public sealed partial class PlanExecutor(
     /// Asked, at the moment of cancellation, what to write in the transcript. Only the caller knows
     /// which of the linked sources fired — the engine sees one token.
     /// <para>
-    /// Security review 2026-08-17, finding L6: the reason was hardcoded to "Stopped by the panic
-    /// key." for any cancellation, so the dashboard's Stop button produced a transcript blaming a
-    /// key the user never pressed — and the transcript is what gets pasted into a repair prompt.
+    /// The reason used to be hardcoded to "Stopped by the panic key." for any cancellation, so the
+    /// dashboard's Stop button produced a transcript blaming a key the user never pressed — and the
+    /// transcript is what gets pasted into a repair prompt.
     /// </para>
     /// </param>
     /// <param name="cancellationToken">The panic key, a Stop button, or a host shutting down.</param>
@@ -101,7 +101,7 @@ public sealed partial class PlanExecutor(
 
             // Asked rather than assumed. The engine cannot tell the panic key from a Stop button —
             // they are linked into one token — and guessing put the wrong sentence in the
-            // transcript. Security review 2026-08-17, finding L6.
+            // transcript.
             run.Stop(Describe(describeCancellation), null);
             Log(run, null, "abort", StepOutcome.Aborted, Verification.None,
                 "Run cancelled; held modifier keys released.");
@@ -115,12 +115,11 @@ public sealed partial class PlanExecutor(
             var detail = $"The engine hit an unexpected error: {ex.Message}";
             run.Stop(detail, null);
 
-            // Logged, like the cancellation path above. Security review 2026-08-17, finding L10: this
-            // stopped the run without writing an entry, so the transcript simply ended — and the
-            // transcript is the whole record of what happened for anyone reading it afterwards or
-            // pasting it into a repair prompt. The exception type is named because "unexpected"
-            // covers everything from a disposed window to a Win32 failure, and which one it was is
-            // the first thing worth knowing.
+            // Logged, like the cancellation path above. This used to stop the run without writing
+            // an entry, so the transcript simply ended — and the transcript is the whole record of
+            // what happened for anyone reading it afterwards or pasting it into a repair prompt.
+            // The exception type is named because "unexpected" covers everything from a disposed
+            // window to a Win32 failure, and which one it was is the first thing worth knowing.
             Log(run, null, "abort", StepOutcome.Aborted, Verification.None,
                 $"{detail} ({ex.GetType().Name}) Held modifier keys released.");
         }
@@ -137,8 +136,9 @@ public sealed partial class PlanExecutor(
     /// </summary>
     /// <remarks>
     /// The delegate runs on the abort path, so it must not be able to replace a clean abort with an
-    /// exception — and the fallback says only what is certainly true. "Stopped by the panic key" was
-    /// the old text, and being specific about a mechanism nobody invoked is worse than being vague.
+    /// exception — and the fallback says only what is certainly true. "Stopped by the panic key"
+    /// was the old text, and being specific about a mechanism nobody invoked is worse than being
+    /// vague.
     /// </remarks>
     private static string Describe(Func<string>? describeCancellation)
     {
@@ -226,7 +226,7 @@ public sealed partial class PlanExecutor(
 
         // Whichever runs out first: the action's own timeout, or what is left of the run's budget.
         //
-        // Security review 2026-08-17, finding M5. The wall-clock cap was only evaluated *between*
+        // The wall-clock cap used to be evaluated only *between*
         // actions, so a single action could run for its own timeoutMs — bounded by policy at
         // 300 000 ms, two and a half times the documented 120 s cap. The panic key still worked,
         // because cancellation is cooperative and honoured throughout, but the engine's own escape
@@ -421,14 +421,14 @@ public sealed partial class PlanExecutor(
     /// Why this postcondition could never hold, or null if it is a real question.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding M1. An unset variable interpolates to the empty string,
+    /// An unset variable interpolates to the empty string,
     /// and an empty comparison value turns a check into a tautology or an impossibility depending
     /// on which one it is. Either way the plan asked a question it cannot get a meaningful answer
     /// to, and saying so beats reporting a verdict that means nothing.
     /// <para>
     /// Named after the fault rather than the fix, because the underlying cause is almost always a
     /// variable the plan never wrote — which the policy validator now also catches inside
-    /// expectations (finding M2), so a plan reaching this at run time is the rarer case of a
+    /// expectations, so a plan reaching this at run time is the rarer case of a
     /// variable that was declared and assigned but ended up empty.
     /// </para>
     /// </remarks>
@@ -450,7 +450,7 @@ public sealed partial class PlanExecutor(
     /// Whether the clipboard satisfies a <c>clipboard_matches</c> expectation.
     /// </summary>
     /// <remarks>
-    /// An empty needle fails rather than passes. Security review 2026-08-17, finding M1: an unset
+    /// An empty needle fails rather than passes. An unset
     /// variable interpolates to the empty string, so <c>contains: "${ghost}"</c> became
     /// <c>Contains("")</c> — true of every string ever — and the step was reported as
     /// <c>(verified)</c> while verifying nothing. That is the one failure the engine's honesty
@@ -542,10 +542,10 @@ public sealed partial class PlanExecutor(
     /// One run's mutable state, including the clock the wall-clock cap is measured against.
     /// </summary>
     /// <remarks>
-    /// The clock is the executor's <see cref="TimeProvider"/>, not a <see cref="Stopwatch"/>, and the
-    /// distinction is what makes the cap testable. It used to be a Stopwatch while every deadline in
-    /// this file came from the TimeProvider, so a test could move the clock and the cap would not
-    /// notice — which is why the 120 s cap had no test at all before security review 2026-08-17.
+    /// The clock is the executor's <see cref="TimeProvider"/>, not a <see cref="Stopwatch"/>, and
+    /// the distinction is what makes the cap testable. It used to be a Stopwatch while every
+    /// deadline in this file came from the TimeProvider, so a test could move the clock and the cap
+    /// would not notice — which is why the 120 s cap went untested for so long.
     /// </remarks>
     private sealed record RunState(
         Variables Variables, List<LogEntry> Entries, TimeProvider Clock)

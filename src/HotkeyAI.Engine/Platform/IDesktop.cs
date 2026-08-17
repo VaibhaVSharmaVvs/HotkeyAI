@@ -39,7 +39,7 @@ public interface IDesktop
 /// <remarks>
 /// There used to be an <c>IsElevated</c> here, and nothing in the repository ever read it — while
 /// computing it cost three syscalls for every visible window on every window search, including each
-/// 150 ms poll of a <c>wait_for_window</c>. Security review 2026-08-17, finding L9.
+/// 150 ms poll of a <c>wait_for_window</c>.
 /// <para>
 /// Its absence is not a gap. The integrity check that matters is
 /// <c>IInput.CheckHazardAsync</c>, which asks about the window that is actually about to receive
@@ -68,11 +68,11 @@ public enum InputHazard
     /// The window that was going to receive this input is no longer the one in front.
     /// </summary>
     /// <remarks>
-    /// Security review 2026-08-17, finding M7. The hazard check happened once per action, and a
-    /// 2 000-character <c>type_text</c> occupies the foreground for ten seconds afterwards. Anything
-    /// that takes focus in that window receives the remainder — a UAC prompt appearing, the user
-    /// alt-tabbing to their password manager. The other hazards catch a *dangerous* new window;
-    /// this catches a merely different one, which is the case Windows will happily accept.
+    /// The hazard check used to happen once per action, and a 2 000-character <c>type_text</c>
+    /// occupies the foreground for ten seconds afterwards. Anything that takes focus in that window
+    /// receives the remainder — a UAC prompt appearing, the user alt-tabbing to their password
+    /// manager. The other hazards catch a *dangerous* new window; this catches a merely different
+    /// one, which is the case Windows will happily accept.
     /// </remarks>
     FocusMoved,
 }
@@ -84,7 +84,7 @@ public enum InputHazard
 /// <param name="Refusal">
 /// Why a resolved executable was rejected, or null. Separate from "not installed" because the two
 /// need different words: one is a missing application, the other is an application found somewhere
-/// it should not be — which is a warning, not an absence. Security review 2026-08-17, finding H5.
+/// it should not be — which is a warning, not an absence.
 /// </param>
 public readonly record struct AppResolution(string? Path, string? Refusal)
 {
@@ -110,10 +110,10 @@ public interface IProcesses
 
     /// <summary>How many processes carry this name.</summary>
     /// <remarks>
-    /// Asked before the confirmation prompt. Security review 2026-08-17, finding L3: the prompt said
-    /// "Close chrome?" while the terminate killed every process of that name — and on a browser or an
-    /// editor that is routinely a dozen of them. A prompt that understates what it is about to do is
-    /// worse than no prompt, because the user learns to trust it.
+    /// Asked before the confirmation prompt. It used to say "Close chrome?" while the terminate
+    /// killed every process of that name — and on a browser or an editor that is routinely a dozen
+    /// of them. A prompt that understates what it is about to do is worse than no prompt, because
+    /// the user learns to trust it.
     /// </remarks>
     ValueTask<int> CountAsync(string processName, CancellationToken cancellationToken);
 
@@ -162,9 +162,9 @@ public interface IInput
     /// Send one chord.
     /// </summary>
     /// <remarks>
-    /// One, not <c>repeat</c> of them. The repeat loop lives in the executor so the sensitive-window
-    /// guard is re-run between iterations — security review 2026-08-17, finding M7. A loop down here
-    /// is a loop the safety controls cannot see into.
+    /// One, not <c>repeat</c> of them. The repeat loop lives in the executor so the
+    /// sensitive-window guard is re-run between iterations. A loop down here is a loop the safety
+    /// controls cannot see into.
     /// </remarks>
     ValueTask SendChordAsync(IReadOnlyList<KeyName> keys, CancellationToken cancellationToken);
 

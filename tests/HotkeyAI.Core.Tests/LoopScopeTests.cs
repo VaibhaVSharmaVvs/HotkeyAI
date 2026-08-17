@@ -6,11 +6,12 @@ namespace HotkeyAI.Core.Tests;
 /// A <c>foreach</c> item variable exists only inside its loop.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, finding M3. The dataflow check tracked loop item variables in a
+/// The dataflow check used to track loop item variables in a
 /// <c>HashSet</c>, so once a <c>foreach</c> declared one the name counted as assigned for the rest
 /// of the plan — including after the loop had ended and the engine had cleared it. A read there
-/// interpolated to the empty string, which is the same class of silent-empty problem as finding M1:
-/// <c>path_exists</c> on nothing, <c>contains: ""</c> matching everything.
+/// interpolated to the empty string — the same class of silent-empty problem as a postcondition
+/// that compares against nothing: <c>path_exists</c> on nothing, <c>contains: ""</c> matching
+/// everything.
 /// <para>
 /// The set became a dictionary from item variable to the JSON pointer of the loop that owns it, and
 /// "outside the loop" is decided by pointer prefix — which works because the walk is depth-first.
@@ -185,9 +186,9 @@ public sealed class LoopScopeTests
     [Fact]
     public void TheLoopsOwnSourceIsNotTreatedAsAnEscapedRead()
     {
-        // The foreach action's own pointer equals the owner pointer, and it reads source rather than
-        // the item — so the equality case in Escaped has to be excluded or every loop over a list
-        // whose item shares a name with something else would be refused.
+        // The foreach action's own pointer equals the owner pointer, and it reads source rather
+        // than the item — so the equality case in Escaped has to be excluded or every loop over a
+        // list whose item shares a name with something else would be refused.
         var result = Check(
             """
             { "name": "repos", "type": "pathList" },

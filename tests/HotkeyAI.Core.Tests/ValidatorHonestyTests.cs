@@ -7,7 +7,7 @@ namespace HotkeyAI.Core.Tests;
 /// The validator must describe the user's mistake, not the evaluator's search.
 /// </summary>
 /// <remarks>
-/// Security review 2026-08-17, findings L4, L5 and L11 — three ways the validator said something
+/// Three ways the validator used to say something
 /// other than what was wrong. None is exploitable; all three cost the reader time, and two of them
 /// are read by a planner in a fix loop, where a message describing the wrong thing produces the
 /// wrong repair.
@@ -19,7 +19,7 @@ public sealed class ValidatorHonestyTests
     private static string Message(ValidationResult result) =>
         string.Join(" | ", result.Errors.Select(e => e.ToString()));
 
-    // ------------------------------- L4 -------------------------------
+    // --------------------------- numbers out of range ---------------------------
 
     [Fact]
     public void ANumberTooLargeForInt32BlamesThePlanNotTheTool()
@@ -84,13 +84,14 @@ public sealed class ValidatorHonestyTests
         Assert.True(result.IsValid, Message(result));
     }
 
-    // ------------------------------- L5 -------------------------------
+    // ------------------------------ branch noise ------------------------------
 
     [Fact]
     public void AnUnknownFieldIsOneErrorThatNamesTheField()
     {
-        // Two errors before: the object's additionalProperties failure, and "All values fail against
-        // the false schema" on the property — evaluator vocabulary that means nothing to anyone.
+        // Two errors before: the object's additionalProperties failure, and "All values fail
+        // against the false schema" on the property — evaluator vocabulary that means nothing to
+        // anyone.
         var result = PlanValidator.Validate(
             """
             {
@@ -197,7 +198,7 @@ public sealed class ValidatorHonestyTests
         Assert.Contains("permitted values", message, StringComparison.Ordinal);
     }
 
-    // ------------------------------- L11 -------------------------------
+    // ------------------------------- empty plans -------------------------------
 
     [Fact]
     public void APlanWithNoActionsIsRefused()
