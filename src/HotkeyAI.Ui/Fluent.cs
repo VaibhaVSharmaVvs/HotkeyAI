@@ -30,20 +30,29 @@ internal static class Fluent
     private static readonly FontFamily IconFont =
         new("Segoe Fluent Icons, Segoe MDL2 Assets");
 
-    // Code points, named so a reader does not have to look them up.
-    internal const string Refresh = "";
-    internal const string Folder = "";
-    internal const string Document = "";
-    internal const string Search = "";
-    internal const string ChevronDown = "";
-    internal const string Tick = "";
-    internal const string Cross = "";
-    internal const string Keyboard = "";
-    internal const string Play = "";
-    internal const string History = "";
-    internal const string Repair = "";
-    internal const string Read = "";
-    internal const string Add = "";
+    // Code points as explicit escapes, not as pasted characters.
+    //
+    // Written literally, these are private-use characters that no editor renders and no diff
+    // shows — and two of them silently ended up as the wrong glyph, so "Copy prompt for Claude
+    // Code" carried a warning triangle and the back arrow rendered as an empty box. An escape is
+    // greppable, survives every encoding, and can be checked against the Segoe MDL2 chart.
+    internal const string Refresh = "";        // Refresh
+    internal const string Folder = "";         // FolderOpen
+    internal const string Document = "";       // Document
+    internal const string Search = "";         // Search
+    internal const string ChevronDown = "";    // ChevronDown
+    internal const string Back = "";           // Back
+    internal const string Tick = "";           // CheckMark
+    internal const string Cross = "";          // Cancel
+    internal const string Keyboard = "";       // KeyboardClassic
+    internal const string Play = "";           // Play
+    internal const string History = "";        // History
+    internal const string Repair = "";         // Repair
+    internal const string Read = "";           // Page
+    internal const string Add = "";            // Add
+    internal const string Alert = "";          // Warning
+    internal const string Info = "";           // Info
+    internal const string Error = "";          // ErrorBadge
 
     /// <summary>A decorative glyph. Never the only thing saying what something does.</summary>
     internal static TextBlock Glyph(string code, double size = 14, Brush? ink = null) => new()

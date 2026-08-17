@@ -43,9 +43,9 @@ internal sealed class ToastWindow : Window
         // the palette has a real amber, a warning looks like one.
         var (accent, glyph) = level switch
         {
-            NotifyLevel.Error => (Palette.Danger, ""),
-            NotifyLevel.Warning => (Palette.Warning, ""),
-            _ => (Palette.Accent, ""),
+            NotifyLevel.Error => (Palette.Danger, Fluent.Error),
+            NotifyLevel.Warning => (Palette.Warning, Fluent.Alert),
+            _ => (Palette.Accent, Fluent.Info),
         };
 
         var stripe = new StackPanel

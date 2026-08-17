@@ -19,8 +19,8 @@ public sealed class DashboardWindow : Window
     private readonly IDashboardHost host;
     private readonly StackPanel list = new();
     private readonly TextBox description = Field(minLines: 3);
-    private readonly TextBox hotkey = Field(minLines: 1);
     private readonly TextBox pasted = Field(minLines: 6);
+
     private readonly TextBlock status = new()
     {
         Foreground = Palette.Muted,
@@ -29,7 +29,27 @@ public sealed class DashboardWindow : Window
         Margin = new Thickness(0, 8, 0, 0),
     };
 
+    /// <summary>
+    /// The authoring screen's own status line.
+    /// </summary>
+    /// <remarks>
+    /// A second TextBlock rather than reusing the list's: one element cannot be in two places in
+    /// the visual tree, and a message about a plan you are pasting belongs on the screen where
+    /// you pasted it — not left behind on a list you are no longer looking at.
+    /// </remarks>
+    private readonly TextBlock pageStatus = new()
+    {
+        Foreground = Palette.Muted,
+        FontSize = 12,
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 14, 0, 0),
+    };
+
     private readonly TextBox search = new();
+
+    private Grid listView = new();
+    private FrameworkElement newView = new Grid();
+    private ChordField? chord;
 
     /// <summary>
     /// Which rows are open, by file name.
@@ -65,7 +85,6 @@ public sealed class DashboardWindow : Window
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var header = Header();
         Grid.SetRow(header, 0);
@@ -86,29 +105,26 @@ public sealed class DashboardWindow : Window
         Grid.SetRow(scroller, 1);
         layout.Children.Add(scroller);
 
-        // Its own row, above the authoring panel rather than inside it. Everything this window
-        // says back to you arrived here — and while it lived inside a collapsed expander at the
-        // bottom of a full list, every one of those messages was scrolled out of sight.
+        // Its own row. Everything this window says back to you arrived here — and while it lived
+        // inside a collapsed expander at the bottom of a full list, every one of those messages
+        // was scrolled out of sight.
         Grid.SetRow(status, 2);
         layout.Children.Add(status);
 
-        // Collapsed by default. The list is what this window is for; authoring is something you
-        // do occasionally, and giving it a third of the height permanently would leave eight
-        // automations sharing a box three rows tall.
-        var authoring = new Expander
-        {
-            Header = "New hotkey",
-            Foreground = Palette.Text,
-            FontSize = 13,
-            IsExpanded = false,
-            Content = Authoring(),
-            Template = Fluent.ExpanderTemplate(Fluent.Add),
-        };
+        // Two views in one window, not a panel unfolding from the bottom. Authoring a hotkey is a
+        // task with its own several steps, and giving it the whole window says so — where an
+        // expander made it look like a footnote on the list and left it fighting the list for
+        // height. The list keeps its scroll position and its open rows underneath, because coming
+        // back should return you to where you were rather than to the top.
+        listView = layout;
+        newView = Authoring();
+        newView.Visibility = Visibility.Collapsed;
 
-        Grid.SetRow(authoring, 3);
-        layout.Children.Add(authoring);
+        var root = new Grid();
+        root.Children.Add(listView);
+        root.Children.Add(newView);
 
-        Content = layout;
+        Content = root;
         Loaded += (_, _) => Refresh();
 
         SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
@@ -256,6 +272,13 @@ public sealed class DashboardWindow : Window
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
+
+        // The primary action of this window, so it is the one filled button on the screen and it
+        // leads the toolbar.
+        var add = Fluent.Primary("New hotkey", Fluent.Add, ShowNew);
+        add.Margin = new Thickness(0, 0, 14, 0);
+        actions.Children.Add(add);
+
         actions.Children.Add(Fluent.IconButton(
             Fluent.Refresh, "Reload", () => { host.Reload(); Refresh(); Say("Reloaded."); },
             tooltip: "Re-read the folder and rebind every hotkey"));
@@ -991,53 +1014,211 @@ public sealed class DashboardWindow : Window
         window.ShowDialog();
     }
 
-    private StackPanel Authoring()
+    private Grid Authoring()
     {
-        var panel = new StackPanel();
+        chord = new ChordField(host);
 
-        panel.Children.Add(Label("Describe what it should do"));
-        panel.Children.Add(description);
+        var page = new Grid { Margin = new Thickness(20) };
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        panel.Children.Add(Label("Hotkey (optional, e.g. CTRL+ALT+J)"));
-        panel.Children.Add(hotkey);
+        // A back arrow and a title, the way a settings sub-page announces itself. Without the
+        // arrow this is a screen with no visible way out, which is the fastest way to make a
+        // window feel broken.
+        var top = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 18),
+        };
 
-        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-        top.Children.Add(Fluent.IconButton(
+        var back = Fluent.GlyphButton(Fluent.Back, "Back to the list", ShowList, Palette.Text);
+        back.Margin = new Thickness(0, 0, 12, 0);
+        top.Children.Add(back);
+
+        top.Children.Add(new TextBlock
+        {
+            Text = "New hotkey",
+            FontSize = 26,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Palette.Text,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        Grid.SetRow(top, 0);
+        page.Children.Add(top);
+
+        var form = new StackPanel();
+
+        form.Children.Add(Step(1, "Describe what it should do"));
+        form.Children.Add(description);
+
+        form.Children.Add(Step(2, "Choose the combination"));
+        form.Children.Add(chord);
+
+        var prompt = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 14, 0, 0),
+        };
+
+        prompt.Children.Add(Fluent.IconButton(
             Fluent.Read, "Copy prompt for Claude Code", CopyPrompt, Palette.Accent,
             "Copy a prompt describing this, with the schema and the rules"));
-        panel.Children.Add(top);
 
-        panel.Children.Add(Label("Paste the JSON it gives you"));
-        panel.Children.Add(pasted);
+        form.Children.Add(prompt);
 
-        var bottom = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-        bottom.Children.Add(Fluent.IconButton(Fluent.Tick, "Check", CheckPasted, null,
+        form.Children.Add(Step(3, "Paste the JSON it gives you"));
+        form.Children.Add(pasted);
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 14, 0, 0),
+        };
+
+        actions.Children.Add(Fluent.IconButton(Fluent.Tick, "Check", CheckPasted, null,
             "Validate it without saving"));
-        bottom.Children.Add(Fluent.IconButton(Fluent.Read, "Preview", PreviewPasted, null,
+        actions.Children.Add(Fluent.IconButton(Fluent.Read, "Preview", PreviewPasted, null,
             "Render it the way Review does"));
-        bottom.Children.Add(Fluent.Primary("Save", Fluent.Add, SavePasted));
-        panel.Children.Add(bottom);
+        actions.Children.Add(Fluent.Primary("Save", Fluent.Add, SavePasted));
+        form.Children.Add(actions);
 
-        // The status line used to live here. It now sits above this panel, where it is visible
-        // whether or not this is expanded.
-        return panel;
+        // The status line belongs to whichever screen you are on, so this page carries its own
+        // copy of the same TextBlock reference rather than leaving messages behind on the list.
+        form.Children.Add(pageStatus);
+
+        var scroller = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = form,
+        };
+
+        scroller.Resources.Add(typeof(ScrollBar), Fluent.SlimScrollBar());
+        Grid.SetRow(scroller, 1);
+        page.Children.Add(scroller);
+
+        return page;
     }
+
+    /// <summary>A numbered step label. The three steps are a real sequence, so they are numbered.</summary>
+    private static StackPanel Step(int number, string text)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 18, 0, 8),
+        };
+
+        row.Children.Add(new Border
+        {
+            Width = 20,
+            Height = 20,
+            CornerRadius = new CornerRadius(10),
+            Background = Palette.Selection,
+            BorderBrush = Palette.Edge,
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                FontSize = 11,
+                Foreground = Palette.Accent,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        });
+
+        row.Children.Add(new TextBlock
+        {
+            Text = text,
+            FontSize = 13,
+            FontWeight = FontWeights.Medium,
+            Foreground = Palette.Soft,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
+        });
+
+        return row;
+    }
+
+    /// <summary>Slide to the authoring screen.</summary>
+    private void ShowNew()
+    {
+        Slide(from: listView, to: newView, forward: true);
+        Dispatcher.BeginInvoke(new Action(() => description.Focus()),
+            System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    /// <summary>Slide back to the list.</summary>
+    private void ShowList()
+    {
+        Slide(from: newView, to: listView, forward: false);
+        Refresh();
+    }
+
+    /// <summary>
+    /// Cross-slide two views.
+    /// </summary>
+    /// <remarks>
+    /// Transform and opacity only, so this is composited rather than laid out per frame. The
+    /// distance is small — 24 pixels — because the movement is there to say which direction you
+    /// went, not to be watched: a full-width slide on a 900px window is a third of a second of
+    /// nothing happening.
+    /// </remarks>
+    private static void Slide(FrameworkElement from, FrameworkElement to, bool forward)
+    {
+        const double distance = 24;
+
+        var leaving = new TranslateTransform();
+        from.RenderTransform = leaving;
+
+        var arriving = new TranslateTransform { X = forward ? distance : -distance };
+        to.RenderTransform = arriving;
+        to.Opacity = 0;
+        to.Visibility = Visibility.Visible;
+
+        var ease = Fluent.Motion.Ease;
+
+        leaving.BeginAnimation(TranslateTransform.XProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(
+                0, forward ? -distance : distance, Fluent.Motion.Snap) { EasingFunction = ease });
+
+        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(
+            1, 0, Fluent.Motion.Quick) { EasingFunction = ease };
+
+        fadeOut.Completed += (_, _) => from.Visibility = Visibility.Collapsed;
+        from.BeginAnimation(OpacityProperty, fadeOut);
+
+        arriving.BeginAnimation(TranslateTransform.XProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, Fluent.Motion.Snap)
+            {
+                EasingFunction = ease,
+            });
+
+        to.BeginAnimation(OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, 1, Fluent.Motion.Enter)
+            {
+                EasingFunction = ease,
+            });
+    }
+
 
     private void CopyPrompt()
     {
-        var prompt = host.BuildAuthoringPrompt(description.Text, hotkey.Text);
+        var prompt = host.BuildAuthoringPrompt(description.Text, CapturedChord());
 
         try
         {
             Clipboard.SetText(prompt);
-            Say("Prompt copied. Paste it into Claude Code in the Hotkey AI repository, then bring "
-                + "the JSON back here.");
+            SayHere("Prompt copied. Paste it into Claude Code in the Hotkey AI repository, then "
+                + "bring the JSON back here.");
         }
 #pragma warning disable CA1031 // The clipboard is genuinely flaky; another app can hold it open.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            Say($"Could not copy to the clipboard: {ex.Message}");
+            SayHere($"Could not copy to the clipboard: {ex.Message}");
         }
     }
 
@@ -1045,12 +1226,12 @@ public sealed class DashboardWindow : Window
     {
         var problems = host.ValidatePlan(pasted.Text);
 
-        Say(problems.Count == 0
+        SayHere(problems.Count == 0
             ? "Valid. Preview it to check it says what you meant."
             : string.Join(Environment.NewLine, problems.Take(5)));
     }
 
-    private void PreviewPasted() => Say(host.ExplainPlan(pasted.Text));
+    private void PreviewPasted() => SayHere(host.ExplainPlan(pasted.Text));
 
     private void SavePasted()
     {
@@ -1071,10 +1252,8 @@ public sealed class DashboardWindow : Window
                     "Replace it",
                     () => host.ReplacePlan(existing, pasted.Text)))
             {
-                pasted.Clear();
-                description.Clear();
-                hotkey.Clear();
-                Refresh();
+                ClearForm();
+                ShowList();
                 Say($"{existing} replaced. It needs approving again before it can run.");
             }
 
@@ -1085,18 +1264,37 @@ public sealed class DashboardWindow : Window
 
         if (error is not null)
         {
-            Say(error);
+            SayHere(error);
             return;
         }
 
-        pasted.Clear();
-        description.Clear();
-        hotkey.Clear();
-        Refresh();
+        ClearForm();
+
+        // Straight back to the list, because the thing just created is a row on it — and landing
+        // on the screen showing your new hotkey is the confirmation, better than a sentence
+        // saying it worked.
+        ShowList();
         Say("Saved. It is switched on but still needs approval — press Review to read it.");
     }
 
+    /// <summary>The captured combination in the DSL's notation, or null if none was set.</summary>
+    private string? CapturedChord() =>
+        chord?.Chord is { Count: > 0 } keys
+            ? HotkeyAI.Core.PlanRenderer.DescribeTrigger(new HotkeyAI.Core.Dsl.Trigger { Keys = keys })
+            : null;
+
+    private void ClearForm()
+    {
+        pasted.Clear();
+        description.Clear();
+        chord?.Reset();
+        pageStatus.Text = "";
+    }
+
     private void Say(string message) => status.Text = message;
+
+    /// <summary>Say something on the authoring screen rather than on the list.</summary>
+    private void SayHere(string message) => pageStatus.Text = message;
 
     private static TextBlock Label(string text) => new()
     {

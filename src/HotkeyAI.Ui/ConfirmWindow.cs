@@ -26,7 +26,7 @@ internal sealed class ConfirmWindow : OverlayWindow
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        var warning = Fluent.Glyph("", 20, Palette.Danger);
+        var warning = Fluent.Glyph(Fluent.Alert, 20, Palette.Danger);
         warning.VerticalAlignment = VerticalAlignment.Top;
         warning.Margin = new Thickness(0, 1, 14, 0);
         Grid.SetColumn(warning, 0);
