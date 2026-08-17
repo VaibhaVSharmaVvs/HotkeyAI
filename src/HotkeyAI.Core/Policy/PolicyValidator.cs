@@ -52,6 +52,7 @@ public static partial class PolicyValidator
             CheckLaunch(path, action, options, errors);
             CheckChord(path, action, errors);
             CheckSelectors(path, action, options, errors);
+            CheckOpen(path, action, errors);
         }
 
         CheckDataflow(automation, all, errors);
@@ -240,6 +241,30 @@ public static partial class PolicyValidator
                 path + "/path",
                 $"\"{literal}\" is not under an allowed root ("
                 + string.Join(", ", options.AllowedRoots) + ")."));
+        }
+    }
+
+    /// <summary>
+    /// Refuse an <c>open_path</c> whose literal path is something Windows executes.
+    /// </summary>
+    /// <remarks>
+    /// Security review 2026-08-17, finding M9. The executor refuses it too, and has to — a path built
+    /// from a variable is only known at run time, which is exactly the amplifying shape the review
+    /// demonstrated. This half is about the other failure mode: a plan naming an <c>.exe</c> outright
+    /// used to validate clean and be approvable, so the user's yes was given to something that could
+    /// never have been allowed to run.
+    /// </remarks>
+    private static void CheckOpen(string path, HotkeyAction action, List<ValidationError> errors)
+    {
+        if (action is not OpenPathAction open
+            || open.Path.Contains("${", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!ShellOpen.IsAllowed(open.Path, out var reason))
+        {
+            errors.Add(Error(path + "/path", reason));
         }
     }
 

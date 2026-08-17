@@ -390,6 +390,16 @@ public sealed partial class PlanExecutor
             return (StepOutcome.Failed, $"Refused to open: {reason}");
         }
 
+        // The path guard answers "is this under an allowed root", and the default root is the user's
+        // profile — which includes Downloads and AppData\Local\Temp. Security review 2026-08-17,
+        // finding M9: that made open_path an unrestricted ShellExecute over every directory another
+        // process can drop a file into. Checked here rather than in the Windows layer so it holds
+        // against FakeDesktop too, and so one place decides.
+        if (!Core.Policy.ShellOpen.IsAllowed(path, out var refusal))
+        {
+            return (StepOutcome.Failed, $"Refused to open: {refusal}");
+        }
+
         await desktop.Files.OpenAsync(path, token).ConfigureAwait(false);
         return (StepOutcome.Succeeded, $"Opened {path}.");
     }

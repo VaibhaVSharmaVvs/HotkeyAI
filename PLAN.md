@@ -424,6 +424,14 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
 2. **Validator is an allowlist, not a blocklist.** Unknown action `type` → reject. Unknown
    field → reject. `launch_process` must use `resolve` against the app registry or an absolute
    path under a configured allowed root. No shell primitive exists to abuse.
+
+   `open_path` is the other way to reach the shell, and being under an allowed root is not enough
+   on its own: the default root is the user's profile, which contains `Downloads` and
+   `AppData\Local\Temp` — directories another process can write to. It refuses anything Windows
+   *executes* rather than opens (`.exe .bat .ps1 .lnk .url .hta .msi .reg .scr .cpl` and the
+   rest), at validation for a literal path and at execution for an interpolated one, since only
+   the second can be checked when the path comes from a variable (security review 2026-08-17,
+   finding M9).
 3. **Sensitive-window guard.** Before *and throughout* any `send_keys` / `type_text`, check the
    foreground window: refuse if it is a UAC consent dialog, a credential prompt, or a focused
    edit control carrying the `ES_PASSWORD` style. Detect and report integrity mismatch rather
