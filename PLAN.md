@@ -424,10 +424,17 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
 2. **Validator is an allowlist, not a blocklist.** Unknown action `type` → reject. Unknown
    field → reject. `launch_process` must use `resolve` against the app registry or an absolute
    path under a configured allowed root. No shell primitive exists to abuse.
-3. **Sensitive-window guard.** Before any `send_keys` / `type_text`, check the foreground
-   window: refuse if it is a UAC consent dialog, a credential prompt, or a focused edit control
-   carrying the `ES_PASSWORD` style. Detect and report integrity mismatch rather than failing
-   silently.
+3. **Sensitive-window guard.** Before *and throughout* any `send_keys` / `type_text`, check the
+   foreground window: refuse if it is a UAC consent dialog, a credential prompt, or a focused
+   edit control carrying the `ES_PASSWORD` style. Detect and report integrity mismatch rather
+   than failing silently.
+
+   Throughout, because typing paces at 5 ms per character and `repeat` reaches 50 — one check
+   before a long payload is stale long before the payload ends. The executor owns both loops and
+   re-checks every 32 characters and between every repeat (security review 2026-08-17, finding
+   M7). `type_text` additionally refuses if the foreground window merely *changed*, since typing
+   never intends to move focus; `send_keys` does not, because a chord often does — Alt+Tab,
+   Win+D, Ctrl+W on the last tab.
 
    The password-style check reads the focused control's style through `GetGUIThreadInfo`, so it
    covers Win32 and WinForms — superclassed classes included. It does **not** cover WPF,

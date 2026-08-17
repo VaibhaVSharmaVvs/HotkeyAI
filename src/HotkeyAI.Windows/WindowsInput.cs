@@ -151,39 +151,39 @@ public sealed class WindowsInput : IInput
         return ((int)Native.GetWindowLongPtr(info.Focus, Native.GWL_STYLE) & Native.ES_PASSWORD) != 0;
     }
 
+    public ValueTask<long> ForegroundWindowIdAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult((long)Native.GetForegroundWindow());
+
     public ValueTask SendChordAsync(
-        IReadOnlyList<KeyName> keys, int repeat, CancellationToken cancellationToken)
+        IReadOnlyList<KeyName> keys, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(keys);
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         var modifiers = keys.Where(Keys.IsModifier).Select(Code).ToList();
         var main = keys.Where(k => !Keys.IsModifier(k)).Select(Code).ToList();
 
-        for (var i = 0; i < Math.Max(1, repeat); i++)
+        var sequence = new List<Native.Input>();
+
+        foreach (var modifier in modifiers)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var sequence = new List<Native.Input>();
-
-            foreach (var modifier in modifiers)
-            {
-                sequence.Add(Key(modifier, down: true));
-            }
-
-            foreach (var key in main)
-            {
-                sequence.Add(Key(key, down: true));
-                sequence.Add(Key(key, down: false));
-            }
-
-            // Released in reverse, mirroring how a person lets go of a chord.
-            for (var m = modifiers.Count - 1; m >= 0; m--)
-            {
-                sequence.Add(Key(modifiers[m], down: false));
-            }
-
-            Send(sequence);
+            sequence.Add(Key(modifier, down: true));
         }
+
+        foreach (var key in main)
+        {
+            sequence.Add(Key(key, down: true));
+            sequence.Add(Key(key, down: false));
+        }
+
+        // Released in reverse, mirroring how a person lets go of a chord.
+        for (var m = modifiers.Count - 1; m >= 0; m--)
+        {
+            sequence.Add(Key(modifiers[m], down: false));
+        }
+
+        Send(sequence);
 
         return ValueTask.CompletedTask;
     }

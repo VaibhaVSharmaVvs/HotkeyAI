@@ -56,6 +56,18 @@ public enum InputHazard
 
     /// <summary>Foreground runs elevated, so input would silently go nowhere.</summary>
     ElevatedWindow,
+
+    /// <summary>
+    /// The window that was going to receive this input is no longer the one in front.
+    /// </summary>
+    /// <remarks>
+    /// Security review 2026-08-17, finding M7. The hazard check happened once per action, and a
+    /// 2 000-character <c>type_text</c> occupies the foreground for ten seconds afterwards. Anything
+    /// that takes focus in that window receives the remainder — a UAC prompt appearing, the user
+    /// alt-tabbing to their password manager. The other hazards catch a *dangerous* new window;
+    /// this catches a merely different one, which is the case Windows will happily accept.
+    /// </remarks>
+    FocusMoved,
 }
 
 /// <summary>
@@ -118,9 +130,35 @@ public interface IInput
     /// <summary>Whether synthetic input can safely be sent to the foreground window.</summary>
     ValueTask<InputHazard> CheckHazardAsync(CancellationToken cancellationToken);
 
-    ValueTask SendChordAsync(
-        IReadOnlyList<KeyName> keys, int repeat, CancellationToken cancellationToken);
+    /// <summary>
+    /// An opaque identity for whichever window would receive input right now, or 0 for none.
+    /// </summary>
+    /// <remarks>
+    /// Only ever compared, never interpreted — the executor captures it before a long piece of
+    /// input and checks it has not changed partway through. A process name would be the cheaper
+    /// signal and the wrong one: typing a password into the wrong document of the right
+    /// application is exactly the mistake worth catching.
+    /// </remarks>
+    ValueTask<long> ForegroundWindowIdAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Send one chord.
+    /// </summary>
+    /// <remarks>
+    /// One, not <c>repeat</c> of them. The repeat loop lives in the executor so the sensitive-window
+    /// guard is re-run between iterations — security review 2026-08-17, finding M7. A loop down here
+    /// is a loop the safety controls cannot see into.
+    /// </remarks>
+    ValueTask SendChordAsync(IReadOnlyList<KeyName> keys, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Type a run of text, one character at a time.
+    /// </summary>
+    /// <remarks>
+    /// The executor calls this in short chunks rather than handing over a whole payload, for the
+    /// reason above: typing paces at 5 ms per character, so a long string is many seconds during
+    /// which nothing is checking where the characters are going.
+    /// </remarks>
     ValueTask TypeTextAsync(string text, CancellationToken cancellationToken);
 
     ValueTask SendAppCommandAsync(AppCommand command, CancellationToken cancellationToken);

@@ -45,6 +45,16 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
 
     public InputHazard Hazard { get; set; } = InputHazard.None;
 
+    /// <summary>How many times the sensitive-window guard has been consulted.</summary>
+    /// <remarks>
+    /// Counted so a test can assert the guard runs *during* a long piece of input and not only
+    /// before it — security review 2026-08-17, finding M7.
+    /// </remarks>
+    public int HazardChecks { get; private set; }
+
+    /// <summary>Which window would receive input. Change it mid-run to simulate focus moving.</summary>
+    public long ForegroundWindowId { get; set; } = 1;
+
     /// <summary>What the picker returns. Null simulates the user cancelling.</summary>
     public string? PickerChoice { get; set; }
 
@@ -157,12 +167,18 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
 
     // ------------------------------- input -------------------------------
 
-    public ValueTask<InputHazard> CheckHazardAsync(CancellationToken cancellationToken) =>
-        ValueTask.FromResult(Hazard);
+    public ValueTask<InputHazard> CheckHazardAsync(CancellationToken cancellationToken)
+    {
+        HazardChecks++;
+        return ValueTask.FromResult(Hazard);
+    }
+
+    public ValueTask<long> ForegroundWindowIdAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(ForegroundWindowId);
 
     public ValueTask SendChordAsync(
-        IReadOnlyList<KeyName> keys, int repeat, CancellationToken cancellationToken) =>
-        RecordAsync($"keys:{string.Join('+', keys)}x{repeat}");
+        IReadOnlyList<KeyName> keys, CancellationToken cancellationToken) =>
+        RecordAsync($"keys:{string.Join('+', keys)}");
 
     public ValueTask TypeTextAsync(string text, CancellationToken cancellationToken) =>
         RecordAsync($"type:{text}");

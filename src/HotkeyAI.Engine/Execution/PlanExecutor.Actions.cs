@@ -205,17 +205,40 @@ public sealed partial class PlanExecutor
 
     // ------------------------------- input -------------------------------
 
+    /// <summary>
+    /// Characters typed between hazard checks.
+    /// </summary>
+    /// <remarks>
+    /// Typing paces at 5 ms per character, so 32 is a check roughly every 160 ms — often enough that
+    /// a window taking focus gets at most a few characters, cheap enough not to matter: the check is
+    /// a handful of syscalls against a payload that is already spending 160 ms in <c>SendInput</c>.
+    /// </remarks>
+    private const int TypingRecheckChars = 32;
+
     private async Task<(StepOutcome, string)> SendKeysAsync(
         SendKeysAction action, CancellationToken token)
     {
-        if (await BlockedAsync(token).ConfigureAwait(false) is { } blocked)
-        {
-            return blocked;
-        }
+        var repeat = Math.Max(1, action.Repeat ?? 1);
 
-        await desktop.Input
-            .SendChordAsync(action.Keys, action.Repeat ?? 1, token)
-            .ConfigureAwait(false);
+        for (var i = 0; i < repeat; i++)
+        {
+            // Every iteration, not just the first. Security review 2026-08-17, finding M7: repeat
+            // goes to 50, and the guard used to be checked once before the whole run of them.
+            //
+            // Hazards only, deliberately — no foreground-identity check, which type_text does get.
+            // Changing the foreground window can be the entire point of a chord: Alt+Tab, Win+D,
+            // Ctrl+W on the last tab. Refusing when it moves would break plans that are working
+            // exactly as written, and the hazard checks still catch what actually matters, which is
+            // a consent prompt, an elevated window or a password field arriving mid-sequence.
+            if (await BlockedAsync(token).ConfigureAwait(false) is { } blocked)
+            {
+                return i == 0
+                    ? blocked
+                    : (blocked.Outcome, $"{blocked.Detail} Stopped after {i} of {repeat} repeats.");
+            }
+
+            await desktop.Input.SendChordAsync(action.Keys, token).ConfigureAwait(false);
+        }
 
         return (StepOutcome.Succeeded, $"Sent {string.Join("+", action.Keys)}.");
     }
@@ -223,14 +246,38 @@ public sealed partial class PlanExecutor
     private async Task<(StepOutcome, string)> TypeTextAsync(
         TypeTextAction action, RunState run, CancellationToken token)
     {
-        if (await BlockedAsync(token).ConfigureAwait(false) is { } blocked)
+        var text = run.Variables.Interpolate(action.Text);
+
+        if (await BlockedAsync(token).ConfigureAwait(false) is { } before)
         {
-            return blocked;
+            return before;
         }
 
-        await desktop.Input
-            .TypeTextAsync(run.Variables.Interpolate(action.Text), token)
-            .ConfigureAwait(false);
+        // The window the text is aimed at, recorded once the guard has approved it. Unlike a chord,
+        // typing never intends to change which window is in front, so a change partway through means
+        // the rest of the payload would land somewhere nobody chose.
+        var aimedAt = await desktop.Input.ForegroundWindowIdAsync(token).ConfigureAwait(false);
+
+        // Typed in chunks, with the guard re-run between them. Security review 2026-08-17, finding
+        // M7: a 2 000-character payload paces at 5 ms per character, so the single check that used to
+        // guard the whole thing was ten seconds stale by the end of it.
+        for (var sent = 0; sent < text.Length; sent += TypingRecheckChars)
+        {
+            if (sent > 0
+                && await BlockedAsync(aimedAt, token).ConfigureAwait(false) is { } blocked)
+            {
+                // The count matters here in a way it does not elsewhere: those characters have
+                // already gone somewhere, and the user needs to know how many and go look.
+                return (blocked.Outcome,
+                    $"{blocked.Detail} Stopped after {sent} of {text.Length} characters, which have "
+                    + "already been typed.");
+            }
+
+            var take = Math.Min(TypingRecheckChars, text.Length - sent);
+            await desktop.Input
+                .TypeTextAsync(text.Substring(sent, take), token)
+                .ConfigureAwait(false);
+        }
 
         // Deliberately not logging the text. Safety control 6 — a plan may legitimately type
         // something the user would not want in a log they paste into a repair prompt.
@@ -246,13 +293,39 @@ public sealed partial class PlanExecutor
     /// simply go nowhere. Reporting it as a failure is the only way the user learns why an
     /// automation "worked" but nothing happened.
     /// </remarks>
-    private async Task<(StepOutcome, string)?> BlockedAsync(CancellationToken token)
+    private Task<(StepOutcome Outcome, string Detail)?> BlockedAsync(CancellationToken token) =>
+        BlockedAsync(0, token);
+
+    /// <summary>
+    /// The guard, optionally also requiring the foreground window not to have changed.
+    /// </summary>
+    /// <param name="expectedWindow">
+    /// The window this input was aimed at, or 0 to ask only about hazards. Non-zero on every check
+    /// after the first within one action, which is how a window that took focus partway through is
+    /// caught — the other hazards only recognise a *dangerous* new window, not a different one.
+    /// </param>
+    /// <param name="token">Cancellation, from the per-action deadline or the panic key.</param>
+    private async Task<(StepOutcome Outcome, string Detail)?> BlockedAsync(
+        long expectedWindow, CancellationToken token)
     {
         var hazard = await desktop.Input.CheckHazardAsync(token).ConfigureAwait(false);
+
+        if (hazard == InputHazard.None && expectedWindow != 0)
+        {
+            var now = await desktop.Input.ForegroundWindowIdAsync(token).ConfigureAwait(false);
+            if (now != expectedWindow)
+            {
+                hazard = InputHazard.FocusMoved;
+            }
+        }
 
         return hazard switch
         {
             InputHazard.None => null,
+
+            InputHazard.FocusMoved => (StepOutcome.Failed,
+                "A different window came to the front while this input was being sent, so the rest "
+                + "was not sent."),
 
             InputHazard.ConsentPrompt => (StepOutcome.Failed,
                 "Refused to send input: a Windows security prompt has focus."),
