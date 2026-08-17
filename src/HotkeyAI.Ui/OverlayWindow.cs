@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using HotkeyAI.Windows;
 
@@ -158,6 +159,7 @@ public abstract class OverlayWindow : Window
         try
         {
             Show();
+            Arrive();
 
             // WPF's Activate is subject to the same foreground lock as everything else, and the
             // agent has usually lost its claim by the time the overlay opens. Without this the
@@ -173,6 +175,39 @@ public abstract class OverlayWindow : Window
         {
             RestoreForeground();
         }
+    }
+
+    /// <summary>
+    /// Fade and lift the card into place.
+    /// </summary>
+    /// <remarks>
+    /// The card only, not the window: an <c>AllowsTransparency</c> window animating its own
+    /// opacity is composited on the CPU and stutters. Scaling from 0.97 rather than from nothing,
+    /// because nothing appears from nothing — and only 3%, since this overlay is in the way of
+    /// somebody's keystroke and has no business making them wait to see it.
+    /// <para>
+    /// Deliberately not applied to the toast, which is a separate window and never animates its
+    /// arrival into the user's attention.
+    /// </para>
+    /// </remarks>
+    private void Arrive()
+    {
+        var lift = new ScaleTransform(0.97, 0.97);
+        Card.RenderTransformOrigin = new Point(0.5, 0.4);
+        Card.RenderTransform = lift;
+        Card.Opacity = 0;
+
+        var grow = new DoubleAnimation(0.97, 1, Fluent.Motion.Enter)
+        {
+            EasingFunction = Fluent.Motion.Ease,
+        };
+
+        lift.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+        lift.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+
+        Card.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0, 1, Fluent.Motion.Snap) { EasingFunction = Fluent.Motion.Ease });
     }
 
     /// <summary>Hand the foreground back to whatever owned it before the overlay opened.</summary>
@@ -250,28 +285,75 @@ public abstract class OverlayWindow : Window
     }
 }
 
-/// <summary>The overlay colour scheme, in one place so the four windows match.</summary>
+/// <summary>
+/// The colour scheme, in one place so every window matches.
+/// </summary>
+/// <remarks>
+/// Taken from the product's actual world rather than from a dark-theme template. This app is
+/// about a keyboard, and keyboard culture already has a mature palette tradition: keycap
+/// colourways on an anodised case. So the neutrals are the <em>warm</em> dark grey of an anodised
+/// aluminium body — never the blue-grey every dark app defaults to — the text is the warm
+/// off-white of retro-beige legends, and the colours that mean something come from keycap sets:
+/// botanical sage, clay ochre, terracotta, and a dusty periwinkle that holds hands with the blue
+/// keycap in the app icon.
+/// <para>
+/// Distribution is roughly 60/30/10. <see cref="Surface"/> is most of the screen,
+/// <see cref="Raised"/> and <see cref="Selection"/> carry the structure, and accent plus the
+/// three semantic colours are the small remainder. Colour here is scarce on purpose: it means
+/// status or action, and nothing on this screen is tinted for decoration.
+/// </para>
+/// <para>
+/// One hue family across the surfaces, shifting lightness only — four steps of a few percent
+/// each, so stacking reads as depth rather than as different materials.
+/// </para>
+/// </remarks>
 internal static class Palette
 {
-    public static SolidColorBrush Surface { get; } = Frozen(0xFF, 0x1E, 0x1E, 0x22);
+    // ---- 60%: the case ----
 
-    public static SolidColorBrush Edge { get; } = Frozen(0xFF, 0x3A, 0x3A, 0x42);
+    /// <summary>The window itself: warm near-black, the colour of an anodised body.</summary>
+    public static SolidColorBrush Surface { get; } = Frozen(0xFF, 0x13, 0x12, 0x11);
 
-    public static SolidColorBrush Text { get; } = Frozen(0xFF, 0xEC, 0xEC, 0xF0);
+    // ---- 30%: what sits on it ----
 
-    public static SolidColorBrush Muted { get; } = Frozen(0xFF, 0x92, 0x92, 0x9E);
+    /// <summary>A card, one step above the case.</summary>
+    public static SolidColorBrush Raised { get; } = Frozen(0xFF, 0x1D, 0x1B, 0x19);
 
-    public static SolidColorBrush Accent { get; } = Frozen(0xFF, 0x5A, 0x9C, 0xF8);
+    /// <summary>The same card under the pointer.</summary>
+    public static SolidColorBrush RaisedHover { get; } = Frozen(0xFF, 0x26, 0x23, 0x20);
 
-    public static SolidColorBrush Selection { get; } = Frozen(0xFF, 0x2C, 0x3A, 0x52);
+    /// <summary>Inset surfaces — keycaps, inputs, a selected row. Darker, because they receive.</summary>
+    public static SolidColorBrush Selection { get; } = Frozen(0xFF, 0x2E, 0x2A, 0x26);
 
-    public static SolidColorBrush Danger { get; } = Frozen(0xFF, 0xF2, 0x7A, 0x6E);
+    /// <summary>A boundary that should be findable but never the first thing seen.</summary>
+    public static SolidColorBrush Edge { get; } = Frozen(0xFF, 0x33, 0x2F, 0x2A);
 
-    /// <summary>A hotkey that is on and actually holding its combination.</summary>
-    public static SolidColorBrush Good { get; } = Frozen(0xFF, 0x4C, 0xC3, 0x8A);
+    // ---- text: four levels, because two is a flat hierarchy ----
+
+    /// <summary>Primary: the warm off-white of a legend printed on a keycap.</summary>
+    public static SolidColorBrush Text { get; } = Frozen(0xFF, 0xEF, 0xEA, 0xE2);
+
+    /// <summary>Secondary: supporting text that is still meant to be read.</summary>
+    public static SolidColorBrush Soft { get; } = Frozen(0xFF, 0xC4, 0xBD, 0xB2);
+
+    /// <summary>Tertiary: metadata, hints, counts.</summary>
+    public static SolidColorBrush Muted { get; } = Frozen(0xFF, 0x94, 0x8C, 0x80);
+
+    /// <summary>Disabled: present, but not offering anything.</summary>
+    public static SolidColorBrush Faint { get; } = Frozen(0xFF, 0x60, 0x5A, 0x52);
+
+    // ---- 10%: colour that means something ----
 
     /// <summary>
-    /// On, but not running.
+    /// The one accent. Dusty periwinkle — a keycap blue, and a cool note against warm neutrals.
+    /// </summary>
+    public static SolidColorBrush Accent { get; } = Frozen(0xFF, 0x8F, 0xA9, 0xE8);
+
+    /// <summary>A hotkey that is on and actually holding its combination. Botanical sage.</summary>
+    public static SolidColorBrush Good { get; } = Frozen(0xFF, 0x93, 0xB4, 0x7F);
+
+    /// <summary>
+    /// On, but not running. Clay ochre.
     /// </summary>
     /// <remarks>
     /// Its own colour rather than green or red, because it is neither. An automation switched on
@@ -279,13 +361,28 @@ internal static class Palette
     /// to hiding: the user turned it on, the switch says on, and the key does nothing. Painting
     /// that green would make the dashboard lie in exactly the place it is meant to be trusted.
     /// </remarks>
-    public static SolidColorBrush Warning { get; } = Frozen(0xFF, 0xE0, 0xA8, 0x4E);
+    public static SolidColorBrush Warning { get; } = Frozen(0xFF, 0xD9, 0xA0, 0x5B);
 
-    /// <summary>The card surface a row sits on, one step above the window.</summary>
-    public static SolidColorBrush Raised { get; } = Frozen(0xFF, 0x2A, 0x2A, 0x30);
+    /// <summary>Off, failed, or about to destroy something. Terracotta.</summary>
+    public static SolidColorBrush Danger { get; } = Frozen(0xFF, 0xDD, 0x85, 0x71);
 
-    /// <summary>The same card under the pointer.</summary>
-    public static SolidColorBrush RaisedHover { get; } = Frozen(0xFF, 0x33, 0x33, 0x3B);
+    /// <summary>
+    /// The glow of a backlight bleeding out from under a keycap.
+    /// </summary>
+    /// <remarks>
+    /// Used behind a status dot so it reads as lit rather than painted, which is the one place
+    /// this interface is allowed to look like the hardware it drives.
+    /// </remarks>
+    public static SolidColorBrush Backlight(SolidColorBrush of, double strength = 0.30)
+    {
+        ArgumentNullException.ThrowIfNull(of);
+
+        var brush = new SolidColorBrush(Color.FromArgb(
+            (byte)(strength * 255), of.Color.R, of.Color.G, of.Color.B));
+
+        brush.Freeze();
+        return brush;
+    }
 
     private static SolidColorBrush Frozen(byte a, byte r, byte g, byte b)
     {

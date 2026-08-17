@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 
 namespace HotkeyAI.Ui;
@@ -54,14 +55,173 @@ internal static class Fluent
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    /// <summary>The status dot: on and running, on but dead, or off.</summary>
-    internal static Ellipse Dot(Brush fill, double size = 9) => new()
+    /// <summary>
+    /// The status dot, lit like a backlight under a keycap.
+    /// </summary>
+    /// <remarks>
+    /// A halo behind the dot rather than a flat disc. This is the one place the interface is
+    /// allowed to look like the hardware it drives, and it costs nothing: a lit dot reads as a
+    /// state the machine is reporting, where a painted circle reads as a label someone typed.
+    /// </remarks>
+    internal static Grid Dot(SolidColorBrush fill, double size = 9)
     {
-        Width = size,
-        Height = size,
-        Fill = fill,
-        VerticalAlignment = VerticalAlignment.Center,
-    };
+        ArgumentNullException.ThrowIfNull(fill);
+
+        var host = new Grid
+        {
+            Width = size * 2.4,
+            Height = size * 2.4,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        host.Children.Add(new Ellipse
+        {
+            Fill = new RadialGradientBrush
+            {
+                GradientStops =
+                {
+                    new GradientStop(Palette.Backlight(fill, 0.42).Color, 0.0),
+                    new GradientStop(Palette.Backlight(fill, 0.0).Color, 1.0),
+                },
+            },
+        });
+
+        host.Children.Add(new Ellipse
+        {
+            Width = size,
+            Height = size,
+            Fill = fill,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        return host;
+    }
+
+    // ----------------------------- motion -----------------------------
+
+    /// <summary>
+    /// How this application moves.
+    /// </summary>
+    /// <remarks>
+    /// Fast, and out of the way. The dashboard is opened for seconds to answer one question, and
+    /// an overlay appears in the middle of somebody's keystroke — anything that has to be waited
+    /// out is a cost, not polish. Everything here is under a quarter of a second and eases out,
+    /// never in: an ease-in delays the first frame, which is the frame the user is watching.
+    /// <para>
+    /// Only <c>Opacity</c> and transforms are animated. Width and height changes cost a layout
+    /// pass per frame, which is exactly how a smooth idea turns into a stuttering one — the row
+    /// expansion below is the single deliberate exception, and it is short.
+    /// </para>
+    /// </remarks>
+    internal static class Motion
+    {
+        /// <summary>Hover and colour shifts. Barely a duration at all.</summary>
+        internal static readonly Duration Quick = new(TimeSpan.FromMilliseconds(120));
+
+        /// <summary>Switches, chevrons, anything the user just clicked.</summary>
+        internal static readonly Duration Snap = new(TimeSpan.FromMilliseconds(170));
+
+        /// <summary>Overlays and panels arriving.</summary>
+        internal static readonly Duration Enter = new(TimeSpan.FromMilliseconds(200));
+
+        /// <summary>
+        /// The curve. Decelerating hard, so movement starts immediately and settles softly —
+        /// which is roughly what a key does when you let it go.
+        /// </summary>
+        internal static IEasingFunction Ease { get; } =
+            new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        /// <summary>Fade something in, from wherever it currently is.</summary>
+        internal static void FadeIn(UIElement element, Duration over)
+        {
+            ArgumentNullException.ThrowIfNull(element);
+
+            element.BeginAnimation(
+                UIElement.OpacityProperty,
+                new DoubleAnimation(element.Opacity, 1, over) { EasingFunction = Ease });
+        }
+
+        /// <summary>Turn something, in place.</summary>
+        internal static void RotateTo(UIElement element, double degrees, Duration over)
+        {
+            ArgumentNullException.ThrowIfNull(element);
+
+            if (element.RenderTransform is not RotateTransform turn)
+            {
+                turn = new RotateTransform(0);
+                element.RenderTransformOrigin = new Point(0.5, 0.5);
+                element.RenderTransform = turn;
+            }
+
+            turn.BeginAnimation(
+                RotateTransform.AngleProperty,
+                new DoubleAnimation(degrees, over) { EasingFunction = Ease });
+        }
+
+        /// <summary>
+        /// Reveal or hide a panel by its own height.
+        /// </summary>
+        /// <remarks>
+        /// The exception to the transform-only rule, and worth it: a panel that slides its content
+        /// out of the way is the one animation in this window that explains what happened. It is
+        /// measured first and released back to automatic height on arrival, so a row that later
+        /// grows — a longer failure reason, a complaint typed in — is not pinned to the height it
+        /// happened to have when it opened.
+        /// </remarks>
+        internal static void Reveal(FrameworkElement panel, bool open, Action? onClosed = null)
+        {
+            ArgumentNullException.ThrowIfNull(panel);
+
+            if (open)
+            {
+                panel.Visibility = Visibility.Visible;
+
+                // Measured at the width it will actually be laid out at, taken from the parent.
+                // Measuring against a guess is how a reveal ends up overshooting and snapping
+                // back: wrapping text is taller at 600px than at 940, so the animation would
+                // climb to a height the panel never needs and then jump down to the real one.
+                var width = panel.ActualWidth;
+
+                if (width <= 0 && panel.Parent is FrameworkElement parent && parent.ActualWidth > 0)
+                {
+                    width = Math.Max(0, parent.ActualWidth - panel.Margin.Left - panel.Margin.Right);
+                }
+
+                panel.Measure(new Size(
+                    width > 0 ? width : double.PositiveInfinity, double.PositiveInfinity));
+
+                var target = panel.DesiredSize.Height;
+                var grow = new DoubleAnimation(0, target, Snap) { EasingFunction = Ease };
+
+                grow.Completed += (_, _) =>
+                {
+                    panel.BeginAnimation(FrameworkElement.HeightProperty, null);
+                    panel.Height = double.NaN;
+                };
+
+                panel.BeginAnimation(FrameworkElement.HeightProperty, grow);
+                panel.BeginAnimation(
+                    UIElement.OpacityProperty, new DoubleAnimation(0, 1, Snap) { EasingFunction = Ease });
+                return;
+            }
+
+            // Exits are faster than entrances. Leaving should not be something you wait for.
+            var shrink = new DoubleAnimation(panel.ActualHeight, 0, Quick) { EasingFunction = Ease };
+
+            shrink.Completed += (_, _) =>
+            {
+                panel.Visibility = Visibility.Collapsed;
+                panel.BeginAnimation(FrameworkElement.HeightProperty, null);
+                panel.Height = double.NaN;
+                onClosed?.Invoke();
+            };
+
+            panel.BeginAnimation(FrameworkElement.HeightProperty, shrink);
+            panel.BeginAnimation(
+                UIElement.OpacityProperty, new DoubleAnimation(1, 0, Quick) { EasingFunction = Ease });
+        }
+    }
 
     /// <summary>
     /// A pill switch, the way Windows 11 draws on and off.
@@ -215,7 +375,14 @@ internal static class Fluent
         hover.Setters.Add(new Setter(Border.BackgroundProperty, Palette.RaisedHover, "bg"));
         template.Triggers.Add(hover);
 
+        // Pressing shrinks it a fraction. Tactile confirmation that the click landed, and the one
+        // piece of motion here that is deliberately instant — a press you can watch arrive is a
+        // press that felt slow.
         var pressed = new Trigger { Property = ButtonBase.IsPressedProperty, Value = true };
+        pressed.Setters.Add(new Setter(
+            UIElement.RenderTransformProperty, new ScaleTransform(0.97, 0.97), "bg"));
+        pressed.Setters.Add(new Setter(
+            UIElement.RenderTransformOriginProperty, new Point(0.5, 0.5), "bg"));
         pressed.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Selection, "bg"));
         template.Triggers.Add(pressed);
 
@@ -762,7 +929,14 @@ internal static class Fluent
         hover.Setters.Add(new Setter(UIElement.OpacityProperty, 0.88, "bg"));
         template.Triggers.Add(hover);
 
+        // Pressing shrinks it a fraction. Tactile confirmation that the click landed, and the one
+        // piece of motion here that is deliberately instant — a press you can watch arrive is a
+        // press that felt slow.
         var pressed = new Trigger { Property = ButtonBase.IsPressedProperty, Value = true };
+        pressed.Setters.Add(new Setter(
+            UIElement.RenderTransformProperty, new ScaleTransform(0.97, 0.97), "bg"));
+        pressed.Setters.Add(new Setter(
+            UIElement.RenderTransformOriginProperty, new Point(0.5, 0.5), "bg"));
         pressed.Setters.Add(new Setter(UIElement.OpacityProperty, 0.72, "bg"));
         template.Triggers.Add(pressed);
 

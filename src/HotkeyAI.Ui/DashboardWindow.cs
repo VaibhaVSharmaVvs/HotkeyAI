@@ -203,6 +203,9 @@ public sealed class DashboardWindow : Window
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
+        // No letter-spacing: WPF has none on TextBlock, and faking it with per-character Runs
+        // costs more than the effect is worth. Hierarchy comes from the three levers WPF does
+        // have — size, weight and colour — which is where most of it lives anyway.
         var title = new TextBlock
         {
             Text = "Hotkeys",
@@ -358,11 +361,15 @@ public sealed class DashboardWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
 
+        // Medium weight, not regular. The name is the focal element of a row, and weight
+        // separates it from the chord and the meta beneath more cleanly than another point of
+        // size would.
         naming.Children.Add(new TextBlock
         {
             Text = entry.Name,
             Foreground = Palette.Text,
             FontSize = 14,
+            FontWeight = FontWeights.Medium,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
@@ -414,39 +421,68 @@ public sealed class DashboardWindow : Window
             Child = head,
         };
 
-        header.MouseEnter += (_, _) => card.Background = Palette.RaisedHover;
-        header.MouseLeave += (_, _) => card.Background = Palette.Raised;
-
-        // The whole strip opens the row. A chevron you have to hit exactly is a target the size
-        // of a full stop. The switch and the keycap are buttons, and buttons mark their own
-        // clicks handled, so they still do their own jobs rather than expanding the row.
-        header.MouseLeftButtonUp += (_, _) => SetExpanded(entry.FileName, !open);
+        // Animated rather than assigned, so the card warms up under the pointer instead of
+        // flicking between two greys.
+        header.MouseEnter += (_, _) => Tint(card, Palette.RaisedHover);
+        header.MouseLeave += (_, _) => Tint(card, Palette.Raised);
 
         System.Windows.Automation.AutomationProperties.SetName(
             header, $"{entry.Name}, {entry.Chord}. {why}.");
 
         body.Children.Add(header);
 
-        if (open)
+        // Built whether or not it is open, and revealed by height. Rebuilding the list to expand
+        // a row — which is what this did — cannot animate: the panel being animated is thrown away
+        // and replaced on the same frame, so the row simply snapped open.
+        var details = Details(entry);
+        details.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        details.Opacity = open ? 1 : 0;
+        body.Children.Add(details);
+
+        // The whole strip opens the row. A chevron you have to hit exactly is a target the size
+        // of a full stop. The switch and the keycap are buttons, and buttons mark their own
+        // clicks handled, so they still do their own jobs rather than expanding the row.
+        var isOpen = open;
+
+        header.MouseLeftButtonUp += (_, _) =>
         {
-            body.Children.Add(Details(entry));
-        }
+            isOpen = !isOpen;
+
+            if (isOpen)
+            {
+                expanded.Add(entry.FileName);
+            }
+            else
+            {
+                expanded.Remove(entry.FileName);
+            }
+
+            Fluent.Motion.Reveal(details, isOpen);
+            Fluent.Motion.RotateTo(chevron, isOpen ? 180 : 0, Fluent.Motion.Snap);
+        };
 
         return card;
     }
 
-    private void SetExpanded(string fileName, bool open)
+    /// <summary>Ease a surface to a new colour rather than swapping it.</summary>
+    private static void Tint(Border surface, SolidColorBrush to)
     {
-        if (open)
+        // A fresh brush per animation: the palette's brushes are frozen, and animating a frozen
+        // brush throws. Frozen is right for them — they are shared by every window.
+        if (surface.Background is not SolidColorBrush { IsFrozen: false } live)
         {
-            expanded.Add(fileName);
-        }
-        else
-        {
-            expanded.Remove(fileName);
+            live = new SolidColorBrush(
+                (surface.Background as SolidColorBrush)?.Color ?? Palette.Raised.Color);
+
+            surface.Background = live;
         }
 
-        Refresh();
+        live.BeginAnimation(
+            SolidColorBrush.ColorProperty,
+            new System.Windows.Media.Animation.ColorAnimation(to.Color, Fluent.Motion.Quick)
+            {
+                EasingFunction = Fluent.Motion.Ease,
+            });
     }
 
     /// <summary>
