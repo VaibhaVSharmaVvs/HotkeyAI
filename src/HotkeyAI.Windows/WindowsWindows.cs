@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using HotkeyAI.Core.Dsl;
 using HotkeyAI.Engine.Platform;
 
@@ -164,6 +165,35 @@ public sealed class WindowsWindows : IWindows
         return found;
     }
 
+    /// <summary>
+    /// How long a single title may be tested against a selector's pattern.
+    /// </summary>
+    /// <remarks>
+    /// A backstop, not the defence — <see cref="TitleOptions"/> is. Per window, and that is the cost
+    /// worth knowing: the enumeration runs over every visible top-level window, and a
+    /// wait_for_window polling every 150 ms can repeat the whole sweep for as long as its timeout
+    /// allows.
+    /// </remarks>
+    private static readonly TimeSpan RegexBudget = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Title patterns run on the non-backtracking engine, so they cannot blow up.
+    /// </summary>
+    /// <remarks>
+    /// Security review 2026-08-17, finding M4. The review suggested a backtracking heuristic in the
+    /// policy layer; this is better than a heuristic, because it is a guarantee. .NET's
+    /// non-backtracking engine matches in time linear in the input, so <c>^(a+)+$</c> — the review's
+    /// own example, which times out the ordinary engine — answers in single-digit milliseconds and
+    /// there is no pattern that does not.
+    /// <para>
+    /// The trade is lookaround, backreferences and atomic groups, which this engine refuses at
+    /// construction. That is a fair price for matching window titles, and
+    /// <c>PolicyValidator</c> refuses such a pattern up front so the plan is rejected at authoring
+    /// time rather than failing on a keypress.
+    /// </para>
+    /// </remarks>
+    private const RegexOptions TitleOptions = RegexOptions.NonBacktracking;
+
     private static bool Matches(WindowRef window, WindowSelector selector)
     {
         if (selector.ProcessName is { } process
@@ -182,18 +212,33 @@ public sealed class WindowsWindows : IWindows
         {
             try
             {
-                if (!System.Text.RegularExpressions.Regex.IsMatch(
-                        window.Title,
-                        pattern,
-                        System.Text.RegularExpressions.RegexOptions.None,
-                        TimeSpan.FromMilliseconds(250)))
+                if (!Regex.IsMatch(window.Title, pattern, TitleOptions, RegexBudget))
                 {
                     return false;
                 }
             }
-            catch (Exception ex) when (ex is ArgumentException or RegexMatchTimeoutMarker)
+            catch (RegexMatchTimeoutException)
             {
-                return false;
+                // Reported, not swallowed. Security review 2026-08-17, finding M4: the catch filter
+                // here tested a private marker class that nothing in the repository ever throws, so
+                // the real RegexMatchTimeoutException escaped, aborted the enumeration partway and
+                // surfaced as a raw exception message. Returning false would be worse than that: a
+                // catastrophic pattern would silently match nothing, and "no window found" is the
+                // one answer that looks like an ordinary result.
+                throw new InvalidOperationException(
+                    $"The titleRegex \"{pattern}\" took longer than "
+                    + $"{RegexBudget.TotalMilliseconds:F0} ms to test against a window title, so "
+                    + "the selector was abandoned.");
+            }
+            catch (Exception invalid) when (invalid is ArgumentException or NotSupportedException)
+            {
+                // Also reported. An unparseable pattern is a fault in the plan, and silently
+                // matching nothing hides it behind an empty result. Both should already have been
+                // refused by PolicyValidator.CheckSelectors before the plan was installed —
+                // NotSupportedException is what the linear-time engine raises for lookaround and
+                // backreferences — so reaching here means a plan bypassed validation.
+                throw new InvalidOperationException(
+                    $"The titleRegex \"{pattern}\" cannot be used: " + invalid.Message);
             }
         }
 
@@ -206,9 +251,6 @@ public sealed class WindowsWindows : IWindows
 
         return true;
     }
-
-    /// <summary>Alias so the catch filter above reads clearly.</summary>
-    private sealed class RegexMatchTimeoutMarker : Exception;
 
     private static string? ProcessName(uint processId)
     {

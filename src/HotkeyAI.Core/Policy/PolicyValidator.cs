@@ -51,6 +51,7 @@ public static partial class PolicyValidator
             CheckBounds(path, action, options, errors);
             CheckLaunch(path, action, options, errors);
             CheckChord(path, action, errors);
+            CheckSelectors(path, action, options, errors);
         }
 
         CheckDataflow(automation, all, errors);
@@ -255,6 +256,119 @@ public static partial class PolicyValidator
             errors.Add(Error(
                 path + "/keys",
                 $"A chord needs exactly one non-modifier key, found {nonModifiers}."));
+        }
+    }
+
+    /// <summary>
+    /// Refuse a <c>titleRegex</c> the engine cannot run safely.
+    /// </summary>
+    /// <remarks>
+    /// Security review 2026-08-17, finding M4. The engine matches titles on .NET's non-backtracking
+    /// engine, which is linear in the input and therefore immune to catastrophic backtracking —
+    /// but it refuses lookaround, backreferences and atomic groups, and it refuses them by throwing
+    /// when the pattern is constructed. Discovering that on a keypress would mean an automation the
+    /// user approved failing at the moment they needed it, so the same construction is attempted
+    /// here, where the answer becomes a validation error with a pointer.
+    /// <para>
+    /// The length cap is separate and cruder: a pattern is a machine-authored string in V2, and a
+    /// very long one is a sign of something other than a window title being matched.
+    /// </para>
+    /// </remarks>
+    private static void CheckSelectors(
+        string path, HotkeyAction action, PolicyOptions options, List<ValidationError> errors)
+    {
+        foreach (var (pointer, selector) in Selectors(action, path))
+        {
+            if (selector.TitleRegex is not { } pattern)
+            {
+                continue;
+            }
+
+            if (pattern.Length > options.MaxTitleRegexLength)
+            {
+                errors.Add(Error(
+                    pointer + "/titleRegex",
+                    $"The pattern is {pattern.Length} characters, over the limit of "
+                    + $"{options.MaxTitleRegexLength}. A window-title pattern this long is "
+                    + "matching something other than a window title."));
+                continue;
+            }
+
+            try
+            {
+                // Construction is the whole check: it parses the pattern and decides whether the
+                // linear-time engine will accept it. Nothing is matched here.
+                _ = new Regex(pattern, RegexOptions.NonBacktracking);
+            }
+            catch (ArgumentException invalid)
+            {
+                errors.Add(Error(
+                    pointer + "/titleRegex",
+                    $"\"{pattern}\" is not a valid regular expression: {invalid.Message}"));
+            }
+            catch (NotSupportedException unsupported)
+            {
+                errors.Add(Error(
+                    pointer + "/titleRegex",
+                    $"\"{pattern}\" uses a construct window matching does not allow. Titles are "
+                    + "matched by an engine that runs in time linear in the title's length, so a "
+                    + "pattern can never hang the desktop — the price is that lookaround, "
+                    + "backreferences and atomic groups are unavailable. Rewrite the pattern "
+                    + $"without them, or use titleContains. ({unsupported.Message})"));
+            }
+        }
+    }
+
+    /// <summary>Every window selector an action carries, with the pointer that reaches it.</summary>
+    /// <remarks>
+    /// Reflective for the same reason <see cref="Strings"/> is: a selector can sit directly on an
+    /// action, inside its <c>expect</c>, or inside a predicate — including one nested in an
+    /// <c>all_of</c> — and naming those places one by one is how a later primitive gets missed.
+    /// </remarks>
+    private static IEnumerable<(string Path, WindowSelector Selector)> Selectors(
+        object value, string path)
+    {
+        if (value is WindowSelector selector)
+        {
+            yield return (path, selector);
+            yield break;
+        }
+
+        if (value is IEnumerable<Condition> conditions)
+        {
+            var index = 0;
+            foreach (var condition in conditions)
+            {
+                foreach (var found in Selectors(condition, $"{path}/{index++}"))
+                {
+                    yield return found;
+                }
+            }
+
+            yield break;
+        }
+
+        if (value is not (HotkeyAction or Postcondition or Condition))
+        {
+            yield break;
+        }
+
+        foreach (var property in value.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0))
+        {
+            // Nested action lists belong to the outer walk, which visits them with their own
+            // pointers — descending into them here would report the same selector twice.
+            if (SafeRead(property, value) is not { } inner
+                || inner is IEnumerable<HotkeyAction>)
+            {
+                continue;
+            }
+
+            foreach (var found in Selectors(inner, $"{path}/{JsonName(property)}"))
+            {
+                yield return found;
+            }
         }
     }
 

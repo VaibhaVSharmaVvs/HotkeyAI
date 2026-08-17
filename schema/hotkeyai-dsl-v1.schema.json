@@ -221,7 +221,7 @@
           "$ref": "#/$defs/TemplateString"
         },
         "titleRegex": {
-          "description": "Regular expression matched against the window title. Use only when a substring match is insufficient.",
+          "description": "Regular expression matched against the window title, case-sensitively. Use only when a substring match is insufficient. Matched by an engine that runs in time linear in the title's length, so no pattern can hang the desktop; the price is that lookaround ('(?=', '(?<='), backreferences ('\\1') and atomic groups ('(?>') are rejected. At most 200 characters.",
           "type": "string"
         },
         "className": {
