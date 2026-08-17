@@ -35,8 +35,11 @@ public static class AgentHost
     /// loudly — running automations with no way to stop them is a materially worse product, and
     /// the user deserves to know which one they have.
     /// </remarks>
-    private static readonly KeyName[] PanicChord =
-        [KeyName.Ctrl, KeyName.Alt, KeyName.Shift, KeyName.Esc];
+    /// <remarks>
+    /// From Core, so the chord the agent registers and the chord the validator refuses as a trigger
+    /// are the same list rather than two that happen to match today.
+    /// </remarks>
+    private static IReadOnlyList<KeyName> PanicChord => HotkeyChord.Panic;
 
     /// <summary>
     /// Guards against a second agent running.
@@ -129,17 +132,17 @@ public static class AgentHost
 
         using var host = new HotkeyHost();
 
+        // The panic key goes first, before any automation gets a chance at a chord.
+        // RegisterHotKey is first-come-first-served, so registering automations first meant one
+        // of them could take Ctrl+Alt+Shift+Esc and the abort key would simply fail to bind.
+        // Security review 2026-08-17, finding H4.
+        RegisterPanic(host);
+
         var runnable = new Dictionary<string, Automation>(StringComparer.Ordinal);
         var registrations = Register(host, loaded, runnable, history);
 
         Report(loaded, registrations, history);
         history.Save();
-
-        var panicResult = host.Register("__panic", PanicChord);
-        AgentLog.Line(panicResult.Registered
-            ? "Panic key   Ctrl+Alt+Shift+Esc — stops a running automation."
-            : $"Panic key   UNAVAILABLE ({panicResult.Describe()}). Automations will run with no "
-              + "way to stop them from the keyboard; quit from the tray instead.");
 
         var desktop = new WindowsDesktop(new WpfPrompts());
         var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots, new WindowsRealPath()));
@@ -201,11 +204,11 @@ public static class AgentHost
         }
 
         var dashboard = new DashboardHost(
-            store, policy, Rebind, host.Probe, Suspend, PanicChord, lastRuns, versions, runner);
+            store, policy, Rebind, host.Probe, Suspend, lastRuns, versions, runner);
 
         using var tray = await TrayIcon.ShowAsync(
             Tooltip(loaded.Count, live),
-            () => Menu(store, runnable, dashboard, Rebind, quit),
+            () => Menu(store, runnable, dashboard, Rebind, runner, quit),
             () => DashboardWindow.Open(dashboard),
             AgentLog.Line).ConfigureAwait(false);
 
@@ -263,6 +266,7 @@ public static class AgentHost
         Dictionary<string, Automation> runnable,
         DashboardHost dashboard,
         Action rebind,
+        AutomationRunner runner,
         TaskCompletionSource quit)
     {
         // Counted at open time rather than captured at startup, because Reload changes it. A tray
@@ -281,6 +285,15 @@ public static class AgentHost
         [
             new TrayCommand($"{live} of {loaded.Count} automations live"),
             TrayCommand.Separator,
+
+            // A mouse-reachable abort. The panic key is the fast path, but it can fail to
+            // register — another application may already hold the chord — and until now that left
+            // no way at all to stop a running automation. Security review 2026-08-17, finding H4.
+            // Shown only while something is running, so the menu does not offer an action that
+            // would do nothing.
+            .. runner.IsBusy
+                ? new[] { new TrayCommand("Stop running automation", runner.Panic, Glyph: "") }
+                : [],
             new TrayCommand("Dashboard", () => DashboardWindow.Open(dashboard), Glyph: ""),
             new TrayCommand(
                 "Automations folder", () => Shell.Open(AgentPaths.Automations), Glyph: ""),
@@ -331,8 +344,29 @@ public static class AgentHost
         Report(loaded, registrations, history);
         history.Save();
 
-        // The panic key went with UnregisterAll, so it has to come back.
-        host.Register("__panic", PanicChord);
+        // The panic key went with UnregisterAll, so it has to come back — and the result is
+        // reported, not discarded. Startup said so loudly while every folder change, dashboard
+        // rebind and suspend-restore came through here in silence, so the abort key could go
+        // missing at any point after launch with nothing anywhere to say it had.
+        RegisterPanic(host);
+    }
+
+    /// <summary>
+    /// Bind the panic key and say what happened.
+    /// </summary>
+    /// <remarks>
+    /// Always through here, so the outcome is reported on every path rather than only at startup.
+    /// An agent running with no keyboard abort is a materially different product from one that has
+    /// it, and the user is entitled to know which they have.
+    /// </remarks>
+    private static void RegisterPanic(HotkeyHost host)
+    {
+        var result = host.Register("__panic", PanicChord);
+
+        AgentLog.Line(result.Registered
+            ? "Panic key   Ctrl+Alt+Shift+Esc — stops a running automation."
+            : $"Panic key   UNAVAILABLE ({result.Describe()}). Automations will run with no way "
+              + "to stop them from the keyboard; use Stop in the tray menu instead.");
     }
 
     private static void ToggleAutostart(bool currentlyEnabled)

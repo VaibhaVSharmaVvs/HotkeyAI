@@ -46,7 +46,37 @@ public static class HotkeyChord
             problems.Add("The chord repeats a key.");
         }
 
+        if (IsPanic(keys))
+        {
+            problems.Add(
+                "Ctrl+Alt+Shift+Esc is the panic key, which stops a running automation. "
+                + "Binding an automation to it would take away the only way to abort one from "
+                + "the keyboard.");
+        }
+
         return problems;
+    }
+
+    /// <summary>
+    /// The chord reserved for aborting a running automation.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than only in the agent, because <see cref="Problems"/> is the one rule the
+    /// validator, the CLI and the dashboard all consult. Security review 2026-08-17, finding H4:
+    /// the dashboard refused this chord when captured through the UI while the validator accepted
+    /// it in hand-authored JSON — and hand-authored JSON is V1's primary authoring path, so the
+    /// rule existed everywhere except the road people actually use. That is exactly the drift this
+    /// type was extracted to prevent.
+    /// </remarks>
+    public static IReadOnlyList<KeyName> Panic { get; } =
+        [KeyName.Ctrl, KeyName.Alt, KeyName.Shift, KeyName.Esc];
+
+    /// <summary>Whether a chord is the panic key, however it was ordered.</summary>
+    public static bool IsPanic(IReadOnlyList<KeyName> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        return keys.Count == Panic.Count && Normalise(keys).SequenceEqual(Normalise(Panic));
     }
 
     /// <summary>Whether this chord is well-formed enough to try registering.</summary>

@@ -30,7 +30,6 @@ internal sealed class DashboardHost(
     Action rebind,
     Func<IReadOnlyList<KeyName>, RegistrationResult> probe,
     Func<IDisposable> suspendHotkeys,
-    IReadOnlyList<KeyName> panicChord,
     IReadOnlyDictionary<string, RunRecord> lastRuns,
     IVersionStore versions,
     AutomationRunner runner) : IDashboardHost
@@ -517,14 +516,12 @@ internal sealed class DashboardHost(
             return new HotkeyAvailability(false, problems[0]);
         }
 
+        // No separate panic-chord test here any more: HotkeyChord.Problems above owns that rule
+        // now, so the dashboard and the validator cannot disagree about it. They did — the
+        // dashboard refused the panic chord while hand-authored JSON sailed through, which is the
+        // drift HotkeyChord was extracted to prevent. Security review 2026-08-17, finding H4.
         var chord = HotkeyChord.Normalise(keys);
         var rendered = PlanRenderer.DescribeTrigger(new Trigger { Keys = chord });
-
-        if (Same(chord, panicChord))
-        {
-            return new HotkeyAvailability(
-                false, $"{rendered} is the panic key, which stops a running automation.");
-        }
 
         // Checked before probing, and load-bearing rather than a nicety. While the capture window
         // is open every hotkey is released, so a chord another automation owns probes as *free* —
