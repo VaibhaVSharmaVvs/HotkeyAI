@@ -50,43 +50,54 @@ internal sealed class TestRunWindow : Window, IDisposable
         this.entry = entry;
 
         Title = $"Test run — {entry.Name}";
-        Width = 780;
-        Height = 560;
+        Width = 800;
+        Height = 600;
+        Icon = TrayIcon.WindowIcon();
         Background = Palette.Surface;
         Foreground = Palette.Text;
         FontFamily = new FontFamily("Segoe UI");
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        var layout = new Grid { Margin = new Thickness(18) };
+        var layout = new Grid { Margin = new Thickness(22) };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var head = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
+        head.Children.Add(Fluent.Heading(entry.Name));
 
         caption = new TextBlock
         {
             Text = "Starting…",
             Foreground = Palette.Muted,
-            FontSize = 12,
+            FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 10),
+            Margin = new Thickness(0, 6, 0, 0),
         };
 
-        Grid.SetRow(caption, 0);
-        layout.Children.Add(caption);
+        head.Children.Add(caption);
+        Grid.SetRow(head, 0);
+        layout.Children.Add(head);
 
         scroller = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Background = Palette.Selection,
-            Padding = new Thickness(8),
+            Background = Palette.Raised,
+            BorderBrush = Palette.Edge,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(10),
             Content = lines,
         };
+
+        scroller.Resources.Add(
+            typeof(System.Windows.Controls.Primitives.ScrollBar), Fluent.SlimScrollBar());
 
         Grid.SetRow(scroller, 1);
         layout.Children.Add(scroller);
 
-        stop = Button("Stop", () => cancellation.Cancel(), Palette.Danger);
+        stop = Fluent.IconButton(Fluent.Cross, "Stop", () => cancellation.Cancel(), Palette.Danger,
+            "Stop the run. The panic key also works.");
 
         // Hidden until the run ends. Asking "does this work?" while it is still running invites an
         // answer to a question the user cannot have seen the end of.
@@ -96,21 +107,24 @@ internal sealed class TestRunWindow : Window, IDisposable
             Visibility = Visibility.Collapsed,
         };
 
-        verdicts.Children.Add(Button("Copy transcript", CopyTranscript, Palette.Text));
-        verdicts.Children.Add(Button("It works", () => Judge(HealthState.Works), Palette.Accent));
+        verdicts.Children.Add(Fluent.IconButton(
+            Fluent.Document, "Copy transcript", CopyTranscript, null,
+            "Copy the log of this run"));
+
+        verdicts.Children.Add(Fluent.IconButton(
+            Fluent.Cross, "Not working", () => Judge(HealthState.NotWorking), Palette.Danger,
+            "Record that this did not do what you meant"));
+
+        // The affirmative is the filled one here, and it is the only place in the app where
+        // "it works" is a primary action — because you have just watched it, which is the one
+        // moment that verdict is worth anything.
         verdicts.Children.Add(
-            Button("Not working", () => Judge(HealthState.NotWorking), Palette.Danger));
+            Fluent.Primary("It works", Fluent.Tick, () => Judge(HealthState.Works)));
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 12, 0, 0),
-        };
-
-        buttons.Children.Add(Button("Close", Close, Palette.Text));
-        buttons.Children.Add(verdicts);
-        buttons.Children.Add(stop);
+        var buttons = Fluent.Buttons(
+            Fluent.IconButton(Fluent.Back, "Close", Close),
+            verdicts,
+            stop);
 
         Grid.SetRow(buttons, 2);
         layout.Children.Add(buttons);
@@ -329,7 +343,7 @@ internal sealed class TestRunWindow : Window, IDisposable
 
     private static SolidColorBrush Ink(StepMood mood) => mood switch
     {
-        StepMood.Verified => Palette.Accent,
+        StepMood.Verified => Palette.Good,
         StepMood.Failed => Palette.Danger,
         StepMood.Idle => Palette.Muted,
 
@@ -339,22 +353,4 @@ internal sealed class TestRunWindow : Window, IDisposable
         _ => Palette.Text,
     };
 
-    private static Button Button(string text, Action onClick, Brush foreground)
-    {
-        var button = new Button
-        {
-            Content = text,
-            Foreground = foreground,
-            Background = Palette.Edge,
-            BorderBrush = Palette.Edge,
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(14, 6, 14, 6),
-            Margin = new Thickness(8, 0, 0, 0),
-            FontSize = 13,
-            Cursor = Cursors.Hand,
-        };
-
-        button.Click += (_, _) => onClick();
-        return button;
-    }
 }

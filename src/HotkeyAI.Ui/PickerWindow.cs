@@ -61,6 +61,11 @@ internal sealed class PickerWindow : OverlayWindow
         results.MouseDoubleClick += (_, _) => Accept();
         ScrollViewer.SetHorizontalScrollBarVisibility(results, ScrollBarVisibility.Disabled);
 
+        // Otherwise a strip of light-theme Windows 7 runs down the inside of the overlay the
+        // moment there are more candidates than fit.
+        results.Resources.Add(
+            typeof(System.Windows.Controls.Primitives.ScrollBar), Fluent.SlimScrollBar());
+
         status = new TextBlock
         {
             Foreground = Palette.Muted,
@@ -79,17 +84,33 @@ internal sealed class PickerWindow : OverlayWindow
             var caption = new TextBlock
             {
                 Text = prompt,
-                Foreground = Palette.Muted,
-                FontSize = 12,
-                Margin = new Thickness(16, 12, 16, 0),
+                Foreground = Palette.Text,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(20, 16, 20, 0),
             };
 
             Grid.SetRow(caption, 0);
             layout.Children.Add(caption);
         }
 
-        Grid.SetRow(query, 1);
-        layout.Children.Add(query);
+        // A magnifier beside the query, so the big empty field reads as something to type into
+        // rather than something that has failed to load.
+        var search = new Grid();
+        search.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        search.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var magnifier = Fluent.Glyph(Fluent.Search, 15, Palette.Muted);
+        magnifier.Margin = new Thickness(20, 0, 0, 0);
+        Grid.SetColumn(magnifier, 0);
+        search.Children.Add(magnifier);
+
+        Grid.SetColumn(query, 1);
+        search.Children.Add(query);
+
+        Grid.SetRow(search, 1);
+        layout.Children.Add(search);
 
         var divider = new Border
         {
@@ -102,7 +123,28 @@ internal sealed class PickerWindow : OverlayWindow
 
         var lower = new StackPanel();
         lower.Children.Add(results);
-        lower.Children.Add(status);
+
+        // The count on the left, the keys on the right. Both belong on one line: this footer is
+        // read at a glance or not at all.
+        var footer = new Grid { Margin = new Thickness(20, 8, 20, 12) };
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        status.Margin = new Thickness(0);
+        status.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(status, 0);
+        footer.Children.Add(status);
+
+        var hints = Fluent.HintBar(
+            Fluent.KeyHint("↑↓", "move"),
+            Fluent.KeyHint("Enter", "choose"),
+            Fluent.KeyHint("Esc", "cancel"));
+
+        hints.Margin = new Thickness(0);
+        Grid.SetColumn(hints, 1);
+        footer.Children.Add(hints);
+
+        lower.Children.Add(footer);
         Grid.SetRow(lower, 3);
         layout.Children.Add(lower);
 
@@ -220,10 +262,12 @@ internal sealed class PickerWindow : OverlayWindow
             results.ScrollIntoView(results.Items[0]);
         }
 
+        // The count only. The keys used to be spelled out here too, and they are now drawn as
+        // keycaps beside this — saying both put the same instruction on screen twice.
         status.Text = ranked.Count switch
         {
-            0 when items.Count > 0 => $"No match  ·  {items.Count} item(s)  ·  Esc cancels",
-            _ => $"{ranked.Count} of {items.Count}  ·  ↑↓ move  ·  Enter select  ·  Esc cancel",
+            0 when items.Count > 0 => $"No match in {items.Count} item(s)",
+            _ => $"{ranked.Count} of {items.Count}",
         };
     }
 
@@ -336,14 +380,20 @@ internal sealed class PickerWindow : OverlayWindow
         var border = new FrameworkElementFactory(typeof(Border), "row");
         border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
         border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
-        border.SetValue(MarginProperty, new Thickness(6, 1, 6, 1));
-        border.SetValue(PaddingProperty, new Thickness(8, 4, 8, 4));
+        border.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetValue(MarginProperty, new Thickness(12, 1, 12, 1));
+        border.SetValue(PaddingProperty, new Thickness(10, 6, 10, 6));
         border.AppendChild(presenter);
 
         var template = new ControlTemplate(typeof(ListBoxItem)) { VisualTree = border };
 
+        // An outline as well as a fill. The selected row is the only thing in this overlay the
+        // user has to be certain about before pressing Enter, and a fill alone is a subtle
+        // difference to spot in the half-second this window is looked at.
         var selected = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
         selected.Setters.Add(new Setter(Border.BackgroundProperty, Palette.Selection, "row"));
+        selected.Setters.Add(new Setter(Border.BorderBrushProperty, Palette.Accent, "row"));
         template.Triggers.Add(selected);
 
         return template;

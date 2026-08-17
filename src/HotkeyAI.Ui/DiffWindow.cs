@@ -24,8 +24,9 @@ internal sealed class DiffWindow : Window
         string title, string before, string after, string actionLabel, Func<string?> onAccept)
     {
         Title = title;
-        Width = 900;
-        Height = 700;
+        Width = 920;
+        Height = 720;
+        Icon = TrayIcon.WindowIcon();
         Background = Palette.Surface;
         Foreground = Palette.Text;
         FontFamily = new FontFamily("Segoe UI");
@@ -34,28 +35,42 @@ internal sealed class DiffWindow : Window
         var diff = LineDiff.Between(before, after);
         var (added, removed) = LineDiff.Summarise(diff);
 
-        var layout = new Grid { Margin = new Thickness(18) };
+        var layout = new Grid { Margin = new Thickness(22) };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var top = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
+        top.Children.Add(Fluent.Heading(title));
 
         // The headline a reviewer reads first: "+2 −1" on a repair is reassuring, "+40 −38" means
         // the plan was rewritten rather than fixed, and that is worth knowing before reading it.
         var summary = new TextBlock
         {
             Foreground = Palette.Muted,
-            FontSize = 12,
-            Margin = new Thickness(0, 0, 0, 10),
+            FontSize = 12.5,
+            Margin = new Thickness(0, 7, 0, 0),
         };
 
-        summary.Inlines.Add(new Run($"+{added} ") { Foreground = Palette.Accent });
-        summary.Inlines.Add(new Run($"−{removed}") { Foreground = Palette.Danger });
+        summary.Inlines.Add(new Run($"+{added} ")
+        {
+            Foreground = Palette.Good,
+            FontWeight = FontWeights.SemiBold,
+        });
+
+        summary.Inlines.Add(new Run($"−{removed}")
+        {
+            Foreground = Palette.Danger,
+            FontWeight = FontWeights.SemiBold,
+        });
+
         summary.Inlines.Add(new Run(added == 0 && removed == 0
             ? "   ·   identical"
             : "   ·   read this before accepting it"));
 
-        Grid.SetRow(summary, 0);
-        layout.Children.Add(summary);
+        top.Children.Add(summary);
+        Grid.SetRow(top, 0);
+        layout.Children.Add(top);
 
         var lines = new StackPanel();
 
@@ -68,10 +83,15 @@ internal sealed class DiffWindow : Window
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Background = Palette.Selection,
-            Padding = new Thickness(8),
+            Background = Palette.Raised,
+            BorderBrush = Palette.Edge,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(10),
             Content = lines,
         };
+
+        scroller.Resources.Add(typeof(System.Windows.Controls.Primitives.ScrollBar),
+            Fluent.SlimScrollBar());
 
         Grid.SetRow(scroller, 1);
         layout.Children.Add(scroller);
@@ -79,30 +99,24 @@ internal sealed class DiffWindow : Window
         var said = new TextBlock
         {
             Foreground = Palette.Danger,
-            FontSize = 11,
+            FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 8, 0, 0),
+            Margin = new Thickness(0, 10, 0, 0),
         };
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 12, 0, 0),
-        };
-
-        buttons.Children.Add(Button("Cancel", Close, Palette.Text));
-        buttons.Children.Add(Button(actionLabel, () =>
-        {
-            if (onAccept() is { } error)
+        var buttons = Fluent.Buttons(
+            Fluent.IconButton(Fluent.Cross, "Cancel", Close),
+            Fluent.Primary(actionLabel, Fluent.Tick, () =>
             {
-                said.Text = error;
-                return;
-            }
+                if (onAccept() is { } error)
+                {
+                    said.Text = error;
+                    return;
+                }
 
-            DialogResult = true;
-            Close();
-        }, Palette.Accent));
+                DialogResult = true;
+                Close();
+            }));
 
         var footer = new StackPanel();
         footer.Children.Add(buttons);
@@ -141,8 +155,8 @@ internal sealed class DiffWindow : Window
         // this is the screen where missing a removed line matters most.
         var (marker, ink, back) = line.Kind switch
         {
-            DiffKind.Added => ("+", Palette.Accent, Colour(0x22, 0x3A, 0x2A)),
-            DiffKind.Removed => ("−", Palette.Danger, Colour(0x3A, 0x24, 0x24)),
+            DiffKind.Added => ("+", Palette.Good, Colour(0x0D, 0x28, 0x18)),
+            DiffKind.Removed => ("−", Palette.Danger, Colour(0x2D, 0x14, 0x17)),
             _ => (" ", Palette.Muted, Brushes.Transparent),
         };
 
@@ -170,22 +184,4 @@ internal sealed class DiffWindow : Window
         return brush;
     }
 
-    private static Button Button(string text, Action onClick, Brush foreground)
-    {
-        var button = new Button
-        {
-            Content = text,
-            Foreground = foreground,
-            Background = Palette.Edge,
-            BorderBrush = Palette.Edge,
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(14, 6, 14, 6),
-            Margin = new Thickness(8, 0, 0, 0),
-            FontSize = 13,
-            Cursor = System.Windows.Input.Cursors.Hand,
-        };
-
-        button.Click += (_, _) => onClick();
-        return button;
-    }
 }

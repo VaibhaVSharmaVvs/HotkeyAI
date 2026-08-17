@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
-using System.Windows.Shapes;
+using HotkeyAI.Core.Matching;
 
 namespace HotkeyAI.Ui;
 
@@ -19,8 +19,8 @@ public sealed class DashboardWindow : Window
     private readonly IDashboardHost host;
     private readonly StackPanel list = new();
     private readonly TextBox description = Field(minLines: 3);
-    private readonly TextBox hotkey = Field(minLines: 1);
     private readonly TextBox pasted = Field(minLines: 6);
+
     private readonly TextBlock status = new()
     {
         Foreground = Palette.Muted,
@@ -29,7 +29,39 @@ public sealed class DashboardWindow : Window
         Margin = new Thickness(0, 8, 0, 0),
     };
 
-    private CheckBox autostart = new();
+    /// <summary>
+    /// The authoring screen's own status line.
+    /// </summary>
+    /// <remarks>
+    /// A second TextBlock rather than reusing the list's: one element cannot be in two places in
+    /// the visual tree, and a message about a plan you are pasting belongs on the screen where
+    /// you pasted it — not left behind on a list you are no longer looking at.
+    /// </remarks>
+    private readonly TextBlock pageStatus = new()
+    {
+        Foreground = Palette.Muted,
+        FontSize = 12,
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 14, 0, 0),
+    };
+
+    private readonly TextBox search = new();
+
+    private Grid listView = new();
+    private FrameworkElement newView = new Grid();
+    private ChordField? chord;
+
+    /// <summary>
+    /// Which rows are open, by file name.
+    /// </summary>
+    /// <remarks>
+    /// Kept on the window rather than on the row, because every refresh rebuilds the list from
+    /// scratch. Without this, approving an automation — or a run finishing — would snap every
+    /// open row shut underneath whoever was reading it.
+    /// </remarks>
+    private readonly HashSet<string> expanded = new(StringComparer.OrdinalIgnoreCase);
+
+    private ToggleButton autostart = new();
 
     /// <summary>Set while the window writes to its own controls, to stop re-entry.</summary>
     private bool refreshing;
@@ -63,27 +95,36 @@ public sealed class DashboardWindow : Window
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = list,
-            Margin = new Thickness(0, 12, 0, 12),
+            Margin = new Thickness(0, 4, 0, 8),
         };
+
+        // WPF's stock scrollbar is a light-theme control with arrow buttons at both ends, and it
+        // is the one piece of chrome in this window that cannot be recoloured through properties.
+        scroller.Resources.Add(typeof(ScrollBar), Fluent.SlimScrollBar());
 
         Grid.SetRow(scroller, 1);
         layout.Children.Add(scroller);
 
-        // Collapsed by default. The list is what this window is for; authoring is something you
-        // do occasionally, and giving it a third of the height permanently would leave eight
-        // automations sharing a box three rows tall.
-        var authoring = new Expander
-        {
-            Header = "New automation",
-            Foreground = Palette.Text,
-            IsExpanded = false,
-            Content = Authoring(),
-        };
+        // Its own row. Everything this window says back to you arrived here — and while it lived
+        // inside a collapsed expander at the bottom of a full list, every one of those messages
+        // was scrolled out of sight.
+        Grid.SetRow(status, 2);
+        layout.Children.Add(status);
 
-        Grid.SetRow(authoring, 2);
-        layout.Children.Add(authoring);
+        // Two views in one window, not a panel unfolding from the bottom. Authoring a hotkey is a
+        // task with its own several steps, and giving it the whole window says so — where an
+        // expander made it look like a footnote on the list and left it fighting the list for
+        // height. The list keeps its scroll position and its open rows underneath, because coming
+        // back should return you to where you were rather than to the top.
+        listView = layout;
+        newView = Authoring();
+        newView.Visibility = Visibility.Collapsed;
 
-        Content = layout;
+        var root = new Grid();
+        root.Children.Add(listView);
+        root.Children.Add(newView);
+
+        Content = root;
         Loaded += (_, _) => Refresh();
 
         SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
@@ -132,18 +173,24 @@ public sealed class DashboardWindow : Window
         list.Children.Clear();
 
         var entries = host.Load();
+        var query = search.Text;
+
+        var shown = entries
+            .Where(e => HotkeySearch.Matches(e.Name, e.Chord, query))
+            .ToList();
 
         if (entries.Count == 0)
         {
-            list.Children.Add(new TextBlock
-            {
-                Text = "No automations yet. Describe one below to get started.",
-                Foreground = Palette.Muted,
-                Margin = new Thickness(4, 12, 4, 12),
-            });
+            list.Children.Add(Empty("No hotkeys yet. Add one below to get started."));
+        }
+        else if (shown.Count == 0)
+        {
+            // Said differently from "none exist", because the two look identical on screen and
+            // mean completely different things.
+            list.Children.Add(Empty($"Nothing matches “{query.Trim()}”."));
         }
 
-        foreach (var entry in entries)
+        foreach (var entry in shown)
         {
             list.Children.Add(Row(entry));
         }
@@ -153,125 +200,346 @@ public sealed class DashboardWindow : Window
         refreshing = false;
     }
 
-    private Grid Header()
+    private static TextBlock Empty(string message) => new()
     {
-        var row = new Grid();
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Text = message,
+        Foreground = Palette.Muted,
+        FontSize = 13,
+        Margin = new Thickness(4, 18, 4, 18),
+        HorizontalAlignment = HorizontalAlignment.Center,
+    };
 
+    private StackPanel Header()
+    {
+        var stack = new StackPanel();
+
+        // Title and search on one line, the way a settings window opens: what this is, and the
+        // fastest way to reach one thing in it.
+        var top = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        // No letter-spacing: WPF has none on TextBlock, and faking it with per-character Runs
+        // costs more than the effect is worth. Hierarchy comes from the three levers WPF does
+        // have — size, weight and colour — which is where most of it lives anyway.
         var title = new TextBlock
         {
-            Text = "Automations",
-            FontSize = 20,
+            Text = "Hotkeys",
+            FontSize = 26,
+            FontWeight = FontWeights.SemiBold,
             Foreground = Palette.Text,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
         Grid.SetColumn(title, 0);
-        row.Children.Add(title);
+        top.Children.Add(title);
 
-        autostart = new CheckBox
+        var field = Fluent.SearchBox(search, "Search by name or combination");
+        field.Margin = new Thickness(24, 0, 0, 0);
+
+        // A fixed width, not a maximum. Left to size itself the field is as wide as whatever is
+        // in it — so it was the width of the placeholder when empty and then snapped in the
+        // moment you typed two characters, which looks like the window flinching.
+        field.Width = 320;
+        field.HorizontalAlignment = HorizontalAlignment.Right;
+
+        // Filters as you type. A search that waits for Enter is a search people stop using.
+        search.TextChanged += (_, _) =>
         {
-            Content = "Start at login",
-            Foreground = Palette.Text,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 12, 0),
+            if (!refreshing)
+            {
+                Refresh();
+            }
         };
 
-        void AutostartChanged(object sender, RoutedEventArgs e)
+        search.PreviewKeyDown += (_, e) =>
         {
-            if (refreshing)
+            if (e.Key == System.Windows.Input.Key.Escape && search.Text.Length > 0)
             {
-                return;
+                search.Clear();
+                e.Handled = true;
             }
+        };
 
-            host.AutostartEnabled = autostart.IsChecked == true;
+        Grid.SetColumn(field, 1);
+        top.Children.Add(field);
+        stack.Children.Add(top);
 
-            // Read back rather than trusting the tick: enabling can fail, and a checkbox that
-            // stays on after a failed write is a lie about whether this starts at login.
-            refreshing = true;
-            autostart.IsChecked = host.AutostartEnabled;
-            refreshing = false;
+        // Toolbar: the three things you do to the whole list, and the one setting that belongs
+        // to the app rather than to any hotkey.
+        var bar = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            Say(autostart.IsChecked == true
-                ? "Hotkey AI will start when you sign in."
-                : "Hotkey AI will not start automatically.");
-        }
+        var actions = new StackPanel { Orientation = Orientation.Horizontal };
 
-        autostart.Checked += AutostartChanged;
-        autostart.Unchecked += AutostartChanged;
+        // The primary action of this window, so it is the one filled button on the screen and it
+        // leads the toolbar.
+        var add = Fluent.Primary("New hotkey", Fluent.Add, ShowNew);
+        add.Margin = new Thickness(0, 0, 14, 0);
+        actions.Children.Add(add);
 
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-        buttons.Children.Add(autostart);
-        buttons.Children.Add(Button("Reload", () => { host.Reload(); Refresh(); Say("Reloaded."); }));
-        buttons.Children.Add(Button("Folder", host.OpenAutomationsFolder));
-        buttons.Children.Add(Button("Log", host.OpenLog));
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.Refresh, "Reload", () => { host.Reload(); Refresh(); Say("Reloaded."); },
+            tooltip: "Re-read the folder and rebind every hotkey"));
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.Folder, "Folder", host.OpenAutomationsFolder,
+            tooltip: "Open the automations folder"));
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.Document, "Log", host.OpenLog, tooltip: "Open today's log"));
 
-        Grid.SetColumn(buttons, 1);
-        row.Children.Add(buttons);
+        Grid.SetColumn(actions, 0);
+        bar.Children.Add(actions);
 
-        return row;
+        autostart = Fluent.Switch(false, OnAutostart, "Start Hotkey AI when you sign in");
+
+        var login = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        login.Children.Add(new TextBlock
+        {
+            Text = "Start at login",
+            Foreground = Palette.Muted,
+            FontSize = 12.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0),
+        });
+
+        login.Children.Add(autostart);
+
+        Grid.SetColumn(login, 1);
+        bar.Children.Add(login);
+        stack.Children.Add(bar);
+
+        return stack;
     }
 
+    private void OnAutostart(bool wanted)
+    {
+        if (refreshing)
+        {
+            return;
+        }
+
+        host.AutostartEnabled = wanted;
+
+        // Read back rather than trusting the switch: enabling can fail, and a control that stays
+        // on after a failed write is a lie about whether this starts at login.
+        refreshing = true;
+        autostart.IsChecked = host.AutostartEnabled;
+        refreshing = false;
+
+        Say(autostart.IsChecked == true
+            ? "Hotkey AI will start when you sign in."
+            : "Hotkey AI will not start automatically.");
+    }
+
+    /// <summary>
+    /// One hotkey: a summary you can scan, and everything else behind a chevron.
+    /// </summary>
+    /// <remarks>
+    /// Collapsed, a row answers only the questions worth asking about every hotkey at once — is
+    /// it on, what fires it, does it work. Ten rows of buttons is not a list you scan, it is a
+    /// wall you read, and the buttons that matter are always the ones belonging to the single
+    /// automation you came here about. Everything else is one click away.
+    /// </remarks>
     private Border Row(DashboardEntry entry)
     {
-        var card = new Border
+        var open = expanded.Contains(entry.FileName);
+
+        var body = new StackPanel();
+        var card = Fluent.Card(body);
+        card.Margin = new Thickness(0, 0, 0, 6);
+
+        var head = new Grid { Margin = new Thickness(14, 11, 12, 11) };
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        // Cyan when it is on and holding its combination — the accent is the colour of a live
+        // hotkey throughout this app, so a lit dot and a lit toggle say the same thing. Amber when
+        // it is on and not running, red when off. Amber is the one that earns its keep: "switched
+        // on, but another application owns this chord" is exactly the state a cyan dot would hide,
+        // and it is the failure this product is most prone to hiding.
+        var (colour, why) = entry switch
         {
-            Background = Palette.Selection,
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(14, 10, 14, 10),
-            Margin = new Thickness(0, 0, 0, 8),
+            { IsEnabled: false } => (Palette.Danger, "Off"),
+            { IsLive: true } => (Palette.Glow, "On, and running"),
+            _ => (Palette.Warning, $"On, but not running — {entry.State}"),
         };
 
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        // A dot rather than a word: whether something is live is the one thing the user scans for.
-        var dot = new Ellipse
-        {
-            Width = 9,
-            Height = 9,
-            Margin = new Thickness(0, 0, 12, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Fill = entry.IsLive ? Palette.Accent : Palette.Muted,
-        };
-
+        var dot = Fluent.Dot(colour);
+        dot.Margin = new Thickness(0, 0, 12, 0);
+        dot.ToolTip = why;
         Grid.SetColumn(dot, 0);
-        grid.Children.Add(dot);
+        head.Children.Add(dot);
 
-        var text = new StackPanel();
-        text.Children.Add(new TextBlock
+        var naming = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // Medium weight, not regular. The name is the focal element of a row, and weight
+        // separates it from the chord and the meta beneath more cleanly than another point of
+        // size would.
+        naming.Children.Add(new TextBlock
         {
             Text = entry.Name,
             Foreground = Palette.Text,
             FontSize = 14,
+            FontWeight = FontWeights.Medium,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
         });
 
-        var detail = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Margin = new Thickness(0, 3, 0, 0),
-        };
+        naming.Children.Add(Keycap(entry));
+        Grid.SetColumn(naming, 1);
+        head.Children.Add(naming);
 
-        // The chord is the control that changes it. Putting rebinding behind a separate button
-        // labelled something else would leave the most obvious thing on the row inert.
-        var rebind = new Button
+        // The verdict as one character. A row nobody has judged yet shows nothing rather than a
+        // third symbol, because "untested" is the absence of an answer, not another answer.
+        if (entry.Health != HealthState.Untested)
         {
-            Content = entry.Chord,
-            Foreground = Palette.Text,
-            Background = Palette.Edge,
-            BorderBrush = Palette.Edge,
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(8, 2, 8, 2),
-            FontSize = 11,
+            var works = entry.Health == HealthState.Works;
+            var verdict = Fluent.Glyph(
+                works ? Fluent.Tick : Fluent.Cross, 13,
+                works ? Palette.Good : Palette.Danger);
+
+            verdict.Margin = new Thickness(10, 0, 6, 0);
+            verdict.ToolTip = entry.HealthNote is { Length: > 0 } note
+                ? $"{(works ? "Works" : "Not working")} — {note}"
+                : works ? "You marked this as working" : "You marked this as not working";
+
+            Grid.SetColumn(verdict, 2);
+            head.Children.Add(verdict);
+        }
+
+        var toggle = Fluent.Switch(
+            entry.IsEnabled,
+            on => Toggle(entry, on),
+            entry.IsEnabled
+                ? "On — pressing the combination runs it"
+                : "Off — the combination does nothing");
+
+        toggle.Margin = new Thickness(8, 0, 4, 0);
+        Grid.SetColumn(toggle, 3);
+        head.Children.Add(toggle);
+
+        var chevron = Fluent.Glyph(Fluent.ChevronDown, 12, Palette.Muted);
+        chevron.Margin = new Thickness(10, 0, 2, 0);
+        chevron.RenderTransformOrigin = new Point(0.5, 0.5);
+        chevron.RenderTransform = new RotateTransform(open ? 180 : 0);
+        Grid.SetColumn(chevron, 4);
+        head.Children.Add(chevron);
+
+        var header = new Border
+        {
+            Background = Brushes.Transparent,
             Cursor = System.Windows.Input.Cursors.Hand,
-            ToolTip = "Change this hotkey",
+            Child = head,
         };
 
-        rebind.Click += (_, _) =>
+        // Animated rather than assigned, so the card warms up under the pointer instead of
+        // flicking between two greys.
+        header.MouseEnter += (_, _) => Tint(card, Palette.RaisedHover);
+        header.MouseLeave += (_, _) => Tint(card, Palette.Raised);
+
+        System.Windows.Automation.AutomationProperties.SetName(
+            header, $"{entry.Name}, {entry.Chord}. {why}.");
+
+        body.Children.Add(header);
+
+        // Built whether or not it is open, and revealed by height. Rebuilding the list to expand
+        // a row — which is what this did — cannot animate: the panel being animated is thrown away
+        // and replaced on the same frame, so the row simply snapped open.
+        var details = Details(entry);
+        details.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        details.Opacity = open ? 1 : 0;
+        body.Children.Add(details);
+
+        // The whole strip opens the row. A chevron you have to hit exactly is a target the size
+        // of a full stop. The switch and the keycap are buttons, and buttons mark their own
+        // clicks handled, so they still do their own jobs rather than expanding the row.
+        var isOpen = open;
+
+        header.MouseLeftButtonUp += (_, _) =>
         {
+            isOpen = !isOpen;
+
+            if (isOpen)
+            {
+                expanded.Add(entry.FileName);
+            }
+            else
+            {
+                expanded.Remove(entry.FileName);
+            }
+
+            Fluent.Motion.Reveal(details, isOpen);
+            Fluent.Motion.RotateTo(chevron, isOpen ? 180 : 0, Fluent.Motion.Snap);
+        };
+
+        return card;
+    }
+
+    /// <summary>Ease a surface to a new colour rather than swapping it.</summary>
+    private static void Tint(Border surface, SolidColorBrush to)
+    {
+        // A fresh brush per animation: the palette's brushes are frozen, and animating a frozen
+        // brush throws. Frozen is right for them — they are shared by every window.
+        if (surface.Background is not SolidColorBrush { IsFrozen: false } live)
+        {
+            live = new SolidColorBrush(
+                (surface.Background as SolidColorBrush)?.Color ?? Palette.Raised.Color);
+
+            surface.Background = live;
+        }
+
+        live.BeginAnimation(
+            SolidColorBrush.ColorProperty,
+            new System.Windows.Media.Animation.ColorAnimation(to.Color, Fluent.Motion.Quick)
+            {
+                EasingFunction = Fluent.Motion.Ease,
+            });
+    }
+
+    /// <summary>
+    /// The combination, drawn as the key it is — and the button that rebinds it.
+    /// </summary>
+    /// <remarks>
+    /// The chord is the control that changes it. Putting rebinding behind a separate button
+    /// labelled something else would leave the most obvious thing on the row inert.
+    /// </remarks>
+    private Button Keycap(DashboardEntry entry)
+    {
+        var cap = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = entry.Chord,
+                FontSize = 11.5,
+                FontFamily = new FontFamily("Consolas"),
+                Foreground = Palette.Text,
+            },
+            Padding = new Thickness(9, 3, 9, 3),
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = "Change this combination",
+            Template = KeycapTemplate(),
+        };
+
+        cap.Click += (_, e) =>
+        {
+            // Handled, so pressing the keycap rebinds instead of also opening the row.
+            e.Handled = true;
+
             if (HotkeyCaptureWindow.Show(this, host, entry.FileName, entry.Name, entry.Chord))
             {
                 Refresh();
@@ -279,104 +547,188 @@ public sealed class DashboardWindow : Window
             }
         };
 
-        detail.Children.Add(rebind);
+        return cap;
+    }
 
-        detail.Children.Add(new TextBlock
-        {
-            Text = entry.Health switch
+    private static ControlTemplate KeycapTemplate()
+    {
+        var border = new FrameworkElementFactory(typeof(Border), "cap");
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(5));
+        border.SetValue(Border.BackgroundProperty, Palette.Selection);
+        border.SetValue(Border.BorderBrushProperty, Palette.Edge);
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetBinding(Border.PaddingProperty,
+            new System.Windows.Data.Binding(nameof(Control.Padding))
             {
-                HealthState.Works => "  ✓ works",
-                HealthState.NotWorking => "  ✗ not working",
-                _ => "  · not tested",
-            },
-            Foreground = entry.Health switch
-            {
-                HealthState.Works => Palette.Accent,
-                HealthState.NotWorking => Palette.Danger,
-                _ => Palette.Muted,
-            },
-            FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
-            ToolTip = entry.HealthNote,
-        });
+                RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent,
+            });
 
-        detail.Children.Add(new TextBlock
+        border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+
+        var template = new ControlTemplate(typeof(Button)) { VisualTree = border };
+
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BorderBrushProperty, Palette.Accent, "cap"));
+        template.Triggers.Add(hover);
+
+        return template;
+    }
+
+    /// <summary>Everything about one hotkey that is not worth showing for all of them.</summary>
+    private StackPanel Details(DashboardEntry entry)
+    {
+        var panel = new StackPanel { Margin = new Thickness(35, 0, 14, 14) };
+        panel.Children.Add(Fluent.Divider());
+
+        var live = entry.IsEnabled && !entry.IsLive;
+
+        // Text on the left, buttons on the right. Stacked vertically the panel was three rows
+        // taller for no more information, and an expanded row that pushes the next hotkey off
+        // screen makes the list worse than it was before it collapsed.
+        var split = new Grid();
+        split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        split.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var left = new StackPanel();
+
+        // Only said when it is bad news. "Live" was here in words as well as in the dot, which is
+        // the same fact twice — but a hotkey that is on and *not* running needs its reason, and
+        // the dot can only carry the colour, not the explanation.
+        if (live)
         {
-            Text = entry.LastRun is null ? entry.State : $"{entry.State}   ·   {entry.LastRun}",
-            Foreground = entry.IsLive ? Palette.Muted : Palette.Danger,
-            FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
+            left.Children.Add(new TextBlock
+            {
+                Text = $"Not running — {entry.State}",
+                Foreground = Palette.Warning,
+                FontSize = 12.5,
+                Margin = new Thickness(0, 0, 0, 4),
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
+
+        left.Children.Add(new TextBlock
+        {
+            Text = entry.LastRun ?? "Not run since the agent started.",
+            Foreground = Palette.Muted,
+            FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap,
         });
 
-        text.Children.Add(detail);
+        if (entry.HealthNote is { Length: > 0 } note)
+        {
+            left.Children.Add(new TextBlock
+            {
+                Text = $"You said: {note}",
+                Foreground = Palette.Muted,
+                FontSize = 12.5,
+                FontStyle = FontStyles.Italic,
+                Margin = new Thickness(0, 4, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
 
-        Grid.SetColumn(text, 1);
-        grid.Children.Add(text);
+        // One box, not two.
+        //
+        // "Not working" used to sit beside this, and its only real job was to unlock Repair —
+        // a label that exists to enable a button is a click tax, and asking someone to formally
+        // declare failure before they are allowed to fix it is backwards. Repair is now offered
+        // unconditionally, and using it is what records that something is broken.
+        //
+        // This one stays, because the value is the *absence* of the tick rather than the tick.
+        // A verdict is bound to the plan's content hash, so editing an automation clears it —
+        // which makes an empty box the answer to the one question nothing else can answer: have
+        // I confirmed this since it last changed? The engine cannot supply that. "Unverified" is
+        // per-action and mechanical; whether it did what you meant is only knowable by you.
+        var works = Fluent.Check(
+            "Works", entry.Health == HealthState.Works,
+            on => SetVerdict(entry, on ? HealthState.Works : HealthState.Untested),
+            Palette.Good);
+
+        works.Margin = new Thickness(0, 14, 0, 0);
+        works.ToolTip = entry.Health switch
+        {
+            HealthState.Works => "You have confirmed this does what you meant",
+            HealthState.NotWorking => "You reported this as broken. Tick once it works again.",
+            _ => "Tick once you have watched it do what you meant",
+        };
+
+        left.Children.Add(works);
+
+        Grid.SetColumn(left, 0);
+        split.Children.Add(left);
 
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(12, 0, 0, 0),
         };
 
         if (entry.NeedsApproval)
         {
-            actions.Children.Add(Button("Review", () => Review(entry)));
+            actions.Children.Add(Fluent.IconButton(
+                Fluent.Read, "Review", () => Review(entry), Palette.Accent,
+                "Read the plan and approve it"));
         }
 
-        // Watching it run is how the verdict below gets answered honestly, so it sits next to
-        // them rather than somewhere else on the row.
+        // Test run comes before Repair, because watching one is how you decide it needs repairing.
         //
-        // Absent rather than disabled when the plan cannot run, because the reason is always
-        // something the row already says and usually the Review button next to it. An offered
-        // button that refuses would have to explain itself in the status line, which on a full
-        // list is scrolled out of sight — a refusal nobody reads is a button that does nothing.
+        // Absent rather than disabled when the plan cannot run: the reason is always something
+        // the row already says, and usually the Review button beside it. An offered button that
+        // refuses would have to explain itself in the status line, and a refusal nobody reads is
+        // a button that does nothing.
         if (entry.CanTestRun)
         {
-            actions.Children.Add(Button("Test run", () => TestRun(entry)));
+            actions.Children.Add(Fluent.IconButton(
+                Fluent.Play, "Test run", () => TestRun(entry), null,
+                "Run it now and watch each step"));
         }
 
-        // The two halves of "does this actually do what I meant?". Clicking the verdict an
-        // automation already has withdraws it, so a wrong click is one click to undo.
-        actions.Children.Add(Verdict("Works", entry, HealthState.Works));
-        actions.Children.Add(Verdict("Not working", entry, HealthState.NotWorking));
+        // On every hotkey, not only ones that have run. The prompt is weaker without a transcript
+        // and says so, but "it has never worked once" is a repair request too, and gating the fix
+        // behind a run you cannot get is the wrong way round.
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.Repair, "Repair", () => Repair(entry), null,
+            "Build a prompt to get this fixed"));
 
-        // Only once it has actually run. Offering repair for an automation with no transcript
-        // would produce a prompt whose most useful section says "there is no transcript".
-        if (entry.LastRun is not null)
+        actions.Children.Add(Fluent.IconButton(
+            Fluent.History, "History", () => History(entry), null,
+            "Past versions, with a diff against what is on disk"));
+
+        Grid.SetColumn(actions, 1);
+        split.Children.Add(actions);
+
+        panel.Children.Add(split);
+        return panel;
+    }
+
+    /// <summary>
+    /// Record whether the user says this does what they meant.
+    /// </summary>
+    /// <remarks>
+    /// Only ever called with Works or Untested now: reporting something as broken happens in the
+    /// repair dialog, because copying a repair prompt is a clearer statement of "this is broken"
+    /// than a checkbox, and it arrives with the complaint attached.
+    /// <para>
+    /// Clearing the tick drops straight to untested even from a reported fault, which is the
+    /// route back for an automation you no longer want flagged.
+    /// </para>
+    /// </remarks>
+    private void SetVerdict(DashboardEntry entry, HealthState state)
+    {
+        if (refreshing)
         {
-            actions.Children.Add(Button("Repair", () => Repair(entry)));
+            return;
         }
 
-        actions.Children.Add(Button("History", () => History(entry)));
+        host.SetHealth(entry.FileName, state, state == HealthState.Works ? null : entry.HealthNote);
+        Refresh();
 
-        var toggle = new CheckBox
+        Say(state switch
         {
-            IsChecked = entry.IsEnabled,
-            Content = "On",
-            Foreground = Palette.Text,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
-        };
-
-        // Checked/Unchecked rather than Click. Click only fires for mouse and keyboard, so a
-        // toggle driven through UI Automation — which is how a screen reader operates it — would
-        // move the tick and change nothing, leaving the dashboard claiming an automation was off
-        // while its hotkey stayed live. IsChecked is set above, before these are attached, so
-        // building the row cannot re-enter.
-        toggle.Checked += (_, _) => Toggle(entry, enabled: true);
-        toggle.Unchecked += (_, _) => Toggle(entry, enabled: false);
-
-        actions.Children.Add(toggle);
-
-        Grid.SetColumn(actions, 2);
-        grid.Children.Add(actions);
-
-        card.Child = grid;
-        return card;
+            HealthState.Works => $"{entry.Name} confirmed working.",
+            _ => $"{entry.Name} is untested again.",
+        });
     }
 
     private void Toggle(DashboardEntry entry, bool enabled)
@@ -401,59 +753,44 @@ public sealed class DashboardWindow : Window
     /// </remarks>
     private void Review(DashboardEntry entry)
     {
-        var window = new Window
-        {
-            Title = $"Review {entry.Name}",
-            Width = 720,
-            Height = 620,
-            Background = Palette.Surface,
-            Foreground = Palette.Text,
-            FontFamily = new FontFamily("Segoe UI"),
-            Owner = this,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-        };
+        var window = Fluent.Dialog(this, $"Review {entry.Name}", 760, 640);
 
-        var layout = new Grid { Margin = new Thickness(18) };
+        var layout = new Grid { Margin = new Thickness(22) };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var body = new ScrollViewer
+        var top = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
+        top.Children.Add(Fluent.Heading(entry.Name));
+        top.Children.Add(new TextBlock
         {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new TextBlock
-            {
-                Text = entry.Preview,
-                Foreground = Palette.Text,
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-            },
-        };
+            Margin = new Thickness(0, 6, 0, 0),
+            FontSize = 12.5,
+            Foreground = Palette.Muted,
+            TextWrapping = TextWrapping.Wrap,
+            Text = $"{entry.Chord} will run this once approved. Read it first — approval is what "
+                 + "stops a file dropped into the folder from running on a keypress.",
+        });
 
-        Grid.SetRow(body, 0);
+        Grid.SetRow(top, 0);
+        layout.Children.Add(top);
+
+        var body = Fluent.CodePanel(entry.Preview);
+        Grid.SetRow(body, 1);
         layout.Children.Add(body);
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 14, 0, 0),
-        };
+        var buttons = Fluent.Buttons(
+            Fluent.IconButton(Fluent.Cross, "Close", window.Close),
+            Fluent.Primary("I have read this — approve", Fluent.Tick, () =>
+            {
+                host.Approve(entry.FileName);
+                window.Close();
+                Refresh();
+                Say($"{entry.Name} approved.");
+            }));
 
-        buttons.Children.Add(Button("Close", window.Close));
-        buttons.Children.Add(Button("I have read this — approve", () =>
-        {
-            host.Approve(entry.FileName);
-            window.Close();
-            Refresh();
-            Say($"{entry.Name} approved.");
-        }));
-
-        Grid.SetRow(buttons, 1);
+        Grid.SetRow(buttons, 2);
         layout.Children.Add(buttons);
-
-        window.SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
-            new System.Windows.Interop.WindowInteropHelper(window).Handle);
 
         window.Content = layout;
         window.ShowDialog();
@@ -488,59 +825,6 @@ public sealed class DashboardWindow : Window
     }
 
     /// <summary>
-    /// One of the two verdict buttons, highlighted when it is the current verdict.
-    /// </summary>
-    /// <remarks>
-    /// Marking an automation as not working goes straight on to the repair dialog. That is the
-    /// whole point of recording the verdict: the moment a user decides something is broken is the
-    /// moment they know what is wrong with it, and asking them again later gets a vaguer answer.
-    /// </remarks>
-    private Button Verdict(string text, DashboardEntry entry, HealthState state)
-    {
-        var active = entry.Health == state;
-
-        var button = new Button
-        {
-            Content = text,
-            Foreground = active
-                ? (state == HealthState.Works ? Palette.Accent : Palette.Danger)
-                : Palette.Muted,
-            Background = active ? Palette.Selection : Palette.Edge,
-            BorderBrush = active
-                ? (state == HealthState.Works ? Palette.Accent : Palette.Danger)
-                : Palette.Edge,
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(8, 3, 8, 3),
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 11,
-            Cursor = System.Windows.Input.Cursors.Hand,
-        };
-
-        button.Click += (_, _) =>
-        {
-            // Clicking the current verdict withdraws it rather than reasserting it.
-            var next = active ? HealthState.Untested : state;
-            host.SetHealth(entry.FileName, next, next == state ? entry.HealthNote : null);
-            Refresh();
-
-            if (next == HealthState.NotWorking)
-            {
-                Repair(entry with { Health = next });
-            }
-            else
-            {
-                Say(next switch
-                {
-                    HealthState.Works => $"{entry.Name} marked as working.",
-                    _ => $"{entry.Name} is untested again.",
-                });
-            }
-        };
-
-        return button;
-    }
-
-    /// <summary>
     /// Past versions of a plan, with a diff against what is on disk now.
     /// </summary>
     /// <remarks>
@@ -559,35 +843,34 @@ public sealed class DashboardWindow : Window
             return;
         }
 
-        var window = new Window
-        {
-            Title = $"History of {entry.Name}",
-            Width = 520,
-            Height = 460,
-            Background = Palette.Surface,
-            Foreground = Palette.Text,
-            FontFamily = new FontFamily("Segoe UI"),
-            Owner = this,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-        };
-
+        var window = Fluent.Dialog(this, $"History of {entry.Name}", 560, 500);
         var list = new StackPanel();
 
         foreach (var version in history)
         {
+            var caption = new StackPanel { Orientation = Orientation.Horizontal };
+            caption.Children.Add(Fluent.Glyph(
+                version.IsCurrent ? Fluent.Tick : Fluent.History, 13,
+                version.IsCurrent ? Palette.Good : Palette.Muted));
+
+            caption.Children.Add(new TextBlock
+            {
+                Text = version.IsCurrent ? $"{version.Summary}   ·   on disk now" : version.Summary,
+                Margin = new Thickness(10, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 12.5,
+            });
+
             var row = new Button
             {
-                Content = version.IsCurrent ? $"{version.Summary}   ·   on disk now" : version.Summary,
+                Content = caption,
                 Foreground = version.IsCurrent ? Palette.Muted : Palette.Text,
-                Background = Palette.Selection,
-                BorderBrush = Palette.Edge,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(12, 8, 12, 8),
+                Padding = new Thickness(12, 9, 12, 9),
                 Margin = new Thickness(0, 0, 0, 6),
                 HorizontalContentAlignment = HorizontalAlignment.Left,
-                FontSize = 12,
                 Cursor = System.Windows.Input.Cursors.Hand,
                 IsEnabled = !version.IsCurrent,
+                Template = Fluent.ListButtonTemplate(),
             };
 
             var id = version.Id;
@@ -622,26 +905,34 @@ public sealed class DashboardWindow : Window
             list.Children.Add(row);
         }
 
-        var layout = new Grid { Margin = new Thickness(18) };
+        var layout = new Grid { Margin = new Thickness(22) };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var caption = Label("Pick a version to see what restoring it would change.");
-        Grid.SetRow(caption, 0);
-        layout.Children.Add(caption);
+        var top = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        top.Children.Add(Fluent.Heading("Version history"));
+        top.Children.Add(new TextBlock
+        {
+            Text = "Pick a version to see what restoring it would change.",
+            Margin = new Thickness(0, 6, 0, 0),
+            FontSize = 12.5,
+            Foreground = Palette.Muted,
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        Grid.SetRow(top, 0);
+        layout.Children.Add(top);
 
         var scroller = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = list,
-            Margin = new Thickness(0, 8, 0, 0),
         };
 
+        scroller.Resources.Add(typeof(ScrollBar), Fluent.SlimScrollBar());
         Grid.SetRow(scroller, 1);
         layout.Children.Add(scroller);
-
-        window.SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
-            new System.Windows.Interop.WindowInteropHelper(window).Handle);
 
         window.Content = layout;
         window.ShowDialog();
@@ -659,57 +950,59 @@ public sealed class DashboardWindow : Window
     {
         var run = host.LastRun(entry.FileName);
 
-        var window = new Window
-        {
-            Title = $"Repair {entry.Name}",
-            Width = 760,
-            Height = 620,
-            Background = Palette.Surface,
-            Foreground = Palette.Text,
-            FontFamily = new FontFamily("Segoe UI"),
-            Owner = this,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-        };
+        var window = Fluent.Dialog(this, $"Repair {entry.Name}", 780, 660);
 
-        var layout = new Grid { Margin = new Thickness(18) };
+        var layout = new Grid { Margin = new Thickness(22) };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var caption = Label("What did it do, and what should it have done?");
-        Grid.SetRow(caption, 0);
-        layout.Children.Add(caption);
+        var top = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        top.Children.Add(Fluent.Heading("What went wrong?"));
+        top.Children.Add(new TextBlock
+        {
+            Text = "Describe what it did and what it should have done. That sentence, the plan "
+                 + "and the run below all go into the prompt.",
+            Margin = new Thickness(0, 6, 0, 0),
+            FontSize = 12.5,
+            Foreground = Palette.Muted,
+            TextWrapping = TextWrapping.Wrap,
+        });
 
-        var complaint = Field(minLines: 3);
-        complaint.Text = entry.HealthNote ?? "";
+        Grid.SetRow(top, 0);
+        layout.Children.Add(top);
+
+        var complaint = Fluent.Input(new TextBox
+        {
+            Text = entry.HealthNote ?? "",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinLines = 3,
+            MaxLines = 6,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        });
+
         Grid.SetRow(complaint, 1);
         layout.Children.Add(complaint);
 
-        var body = new StackPanel();
+        var body = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
 
         body.Children.Add(new TextBlock
         {
-            Text = run is null ? "It has not run yet." : "The last run:",
+            Text = run is null ? "It has not run yet." : "The last run",
             Foreground = Palette.Muted,
-            FontSize = 11,
-            Margin = new Thickness(0, 12, 0, 4),
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 6),
         });
 
-        body.Children.Add(new ScrollViewer
+        if (run is not null)
         {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Margin = new Thickness(0, 0, 0, 8),
-            MaxHeight = 260,
-            Content = new TextBlock
-            {
-                Text = run?.Transcript ?? "",
-                Foreground = Palette.Muted,
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap,
-            },
-        });
+            var transcript = Fluent.CodePanel(run.Transcript);
+            transcript.MaxHeight = 280;
+            body.Children.Add(transcript);
+        }
 
         Grid.SetRow(body, 2);
         layout.Children.Add(body);
@@ -717,35 +1010,31 @@ public sealed class DashboardWindow : Window
         var said = new TextBlock
         {
             Foreground = Palette.Muted,
-            FontSize = 11,
+            FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 8, 0, 0),
-        };
-
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
             Margin = new Thickness(0, 10, 0, 0),
         };
 
-        buttons.Children.Add(Button("Close", window.Close));
-        buttons.Children.Add(Button("Copy repair prompt", () =>
+        var buttons = Fluent.Buttons(
+            Fluent.IconButton(Fluent.Cross, "Close", window.Close),
+            Fluent.Primary("Copy repair prompt", Fluent.Repair, () =>
         {
             try
             {
                 Clipboard.SetText(host.BuildRepairPrompt(entry.FileName, complaint.Text));
 
-                // Keep what they wrote against the automation. It is the same sentence they would
-                // otherwise have to remember and retype the next time they look at this row.
-                if (entry.Health == HealthState.NotWorking && complaint.Text.Trim().Length > 0)
-                {
-                    host.SetHealth(entry.FileName, HealthState.NotWorking, complaint.Text.Trim());
-                    Refresh();
-                }
+                // Copying a repair prompt *is* reporting the automation as broken, so this is
+                // where that gets recorded rather than in a checkbox the user had to tick first.
+                // The complaint is kept with it: it is the same sentence they would otherwise
+                // have to remember and retype the next time they look at this row.
+                host.SetHealth(
+                    entry.FileName, HealthState.NotWorking,
+                    complaint.Text.Trim() is { Length: > 0 } written ? written : entry.HealthNote);
+
+                Refresh();
 
                 said.Text = "Copied. Paste it into Claude Code in the Hotkey AI repository, then "
-                    + "bring the corrected JSON back to New automation below.";
+                    + "bring the corrected JSON back to New hotkey below.";
             }
 #pragma warning disable CA1031 // The clipboard is genuinely flaky; another app can hold it open.
             catch (Exception ex)
@@ -761,56 +1050,216 @@ public sealed class DashboardWindow : Window
         Grid.SetRow(footer, 3);
         layout.Children.Add(footer);
 
-        window.SourceInitialized += (_, _) => HotkeyAI.Windows.WindowTheme.UseDarkTitleBar(
-            new System.Windows.Interop.WindowInteropHelper(window).Handle);
-
         window.Content = layout;
         window.Loaded += (_, _) => complaint.Focus();
         window.ShowDialog();
     }
 
-    private StackPanel Authoring()
+    private Grid Authoring()
     {
-        var panel = new StackPanel();
+        chord = new ChordField(host);
 
-        panel.Children.Add(Label("Describe what it should do"));
-        panel.Children.Add(description);
+        var page = new Grid { Margin = new Thickness(20) };
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        panel.Children.Add(Label("Hotkey (optional, e.g. CTRL+ALT+J)"));
-        panel.Children.Add(hotkey);
+        // A back arrow and a title, the way a settings sub-page announces itself. Without the
+        // arrow this is a screen with no visible way out, which is the fastest way to make a
+        // window feel broken.
+        var top = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 18),
+        };
 
-        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        top.Children.Add(Button("Copy prompt for Claude Code", CopyPrompt));
-        panel.Children.Add(top);
+        var back = Fluent.GlyphButton(Fluent.Back, "Back to the list", ShowList, Palette.Text);
+        back.Margin = new Thickness(0, 0, 12, 0);
+        top.Children.Add(back);
 
-        panel.Children.Add(Label("Paste the JSON it gives you"));
-        panel.Children.Add(pasted);
+        top.Children.Add(new TextBlock
+        {
+            Text = "New hotkey",
+            FontSize = 26,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Palette.Text,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
 
-        var bottom = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        bottom.Children.Add(Button("Check", CheckPasted));
-        bottom.Children.Add(Button("Preview", PreviewPasted));
-        bottom.Children.Add(Button("Save", SavePasted));
-        panel.Children.Add(bottom);
+        Grid.SetRow(top, 0);
+        page.Children.Add(top);
 
-        panel.Children.Add(status);
-        return panel;
+        var form = new StackPanel();
+
+        form.Children.Add(Step(1, "Describe what it should do"));
+        form.Children.Add(description);
+
+        form.Children.Add(Step(2, "Choose the combination"));
+        form.Children.Add(chord);
+
+        var prompt = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 14, 0, 0),
+        };
+
+        prompt.Children.Add(Fluent.IconButton(
+            Fluent.Read, "Copy prompt for Claude Code", CopyPrompt, Palette.Accent,
+            "Copy a prompt describing this, with the schema and the rules"));
+
+        form.Children.Add(prompt);
+
+        form.Children.Add(Step(3, "Paste the JSON it gives you"));
+        form.Children.Add(pasted);
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 14, 0, 0),
+        };
+
+        actions.Children.Add(Fluent.IconButton(Fluent.Tick, "Check", CheckPasted, null,
+            "Validate it without saving"));
+        actions.Children.Add(Fluent.IconButton(Fluent.Read, "Preview", PreviewPasted, null,
+            "Render it the way Review does"));
+        actions.Children.Add(Fluent.Primary("Save", Fluent.Add, SavePasted));
+        form.Children.Add(actions);
+
+        // The status line belongs to whichever screen you are on, so this page carries its own
+        // copy of the same TextBlock reference rather than leaving messages behind on the list.
+        form.Children.Add(pageStatus);
+
+        var scroller = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = form,
+        };
+
+        scroller.Resources.Add(typeof(ScrollBar), Fluent.SlimScrollBar());
+        Grid.SetRow(scroller, 1);
+        page.Children.Add(scroller);
+
+        return page;
     }
+
+    /// <summary>A numbered step label. The three steps are a real sequence, so they are numbered.</summary>
+    private static StackPanel Step(int number, string text)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 18, 0, 8),
+        };
+
+        row.Children.Add(new Border
+        {
+            Width = 20,
+            Height = 20,
+            CornerRadius = new CornerRadius(10),
+            Background = Palette.Selection,
+            BorderBrush = Palette.Edge,
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                FontSize = 11,
+                Foreground = Palette.Accent,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        });
+
+        row.Children.Add(new TextBlock
+        {
+            Text = text,
+            FontSize = 13,
+            FontWeight = FontWeights.Medium,
+            Foreground = Palette.Soft,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
+        });
+
+        return row;
+    }
+
+    /// <summary>Slide to the authoring screen.</summary>
+    private void ShowNew()
+    {
+        Slide(from: listView, to: newView, forward: true);
+        Dispatcher.BeginInvoke(new Action(() => description.Focus()),
+            System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    /// <summary>Slide back to the list.</summary>
+    private void ShowList()
+    {
+        Slide(from: newView, to: listView, forward: false);
+        Refresh();
+    }
+
+    /// <summary>
+    /// Cross-slide two views.
+    /// </summary>
+    /// <remarks>
+    /// Transform and opacity only, so this is composited rather than laid out per frame. The
+    /// distance is small — 24 pixels — because the movement is there to say which direction you
+    /// went, not to be watched: a full-width slide on a 900px window is a third of a second of
+    /// nothing happening.
+    /// </remarks>
+    private static void Slide(FrameworkElement from, FrameworkElement to, bool forward)
+    {
+        const double distance = 24;
+
+        var leaving = new TranslateTransform();
+        from.RenderTransform = leaving;
+
+        var arriving = new TranslateTransform { X = forward ? distance : -distance };
+        to.RenderTransform = arriving;
+        to.Opacity = 0;
+        to.Visibility = Visibility.Visible;
+
+        var ease = Fluent.Motion.Ease;
+
+        leaving.BeginAnimation(TranslateTransform.XProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(
+                0, forward ? -distance : distance, Fluent.Motion.Snap) { EasingFunction = ease });
+
+        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(
+            1, 0, Fluent.Motion.Quick) { EasingFunction = ease };
+
+        fadeOut.Completed += (_, _) => from.Visibility = Visibility.Collapsed;
+        from.BeginAnimation(OpacityProperty, fadeOut);
+
+        arriving.BeginAnimation(TranslateTransform.XProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, Fluent.Motion.Snap)
+            {
+                EasingFunction = ease,
+            });
+
+        to.BeginAnimation(OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, 1, Fluent.Motion.Enter)
+            {
+                EasingFunction = ease,
+            });
+    }
+
 
     private void CopyPrompt()
     {
-        var prompt = host.BuildAuthoringPrompt(description.Text, hotkey.Text);
+        var prompt = host.BuildAuthoringPrompt(description.Text, CapturedChord());
 
         try
         {
             Clipboard.SetText(prompt);
-            Say("Prompt copied. Paste it into Claude Code in the Hotkey AI repository, then bring "
-                + "the JSON back here.");
+            SayHere("Prompt copied. Paste it into Claude Code in the Hotkey AI repository, then "
+                + "bring the JSON back here.");
         }
 #pragma warning disable CA1031 // The clipboard is genuinely flaky; another app can hold it open.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            Say($"Could not copy to the clipboard: {ex.Message}");
+            SayHere($"Could not copy to the clipboard: {ex.Message}");
         }
     }
 
@@ -818,12 +1267,12 @@ public sealed class DashboardWindow : Window
     {
         var problems = host.ValidatePlan(pasted.Text);
 
-        Say(problems.Count == 0
+        SayHere(problems.Count == 0
             ? "Valid. Preview it to check it says what you meant."
             : string.Join(Environment.NewLine, problems.Take(5)));
     }
 
-    private void PreviewPasted() => Say(host.ExplainPlan(pasted.Text));
+    private void PreviewPasted() => SayHere(host.ExplainPlan(pasted.Text));
 
     private void SavePasted()
     {
@@ -844,10 +1293,8 @@ public sealed class DashboardWindow : Window
                     "Replace it",
                     () => host.ReplacePlan(existing, pasted.Text)))
             {
-                pasted.Clear();
-                description.Clear();
-                hotkey.Clear();
-                Refresh();
+                ClearForm();
+                ShowList();
                 Say($"{existing} replaced. It needs approving again before it can run.");
             }
 
@@ -858,18 +1305,37 @@ public sealed class DashboardWindow : Window
 
         if (error is not null)
         {
-            Say(error);
+            SayHere(error);
             return;
         }
 
-        pasted.Clear();
-        description.Clear();
-        hotkey.Clear();
-        Refresh();
+        ClearForm();
+
+        // Straight back to the list, because the thing just created is a row on it — and landing
+        // on the screen showing your new hotkey is the confirmation, better than a sentence
+        // saying it worked.
+        ShowList();
         Say("Saved. It is switched on but still needs approval — press Review to read it.");
     }
 
+    /// <summary>The captured combination in the DSL's notation, or null if none was set.</summary>
+    private string? CapturedChord() =>
+        chord?.Chord is { Count: > 0 } keys
+            ? HotkeyAI.Core.PlanRenderer.DescribeTrigger(new HotkeyAI.Core.Dsl.Trigger { Keys = keys })
+            : null;
+
+    private void ClearForm()
+    {
+        pasted.Clear();
+        description.Clear();
+        chord?.Reset();
+        pageStatus.Text = "";
+    }
+
     private void Say(string message) => status.Text = message;
+
+    /// <summary>Say something on the authoring screen rather than on the list.</summary>
+    private void SayHere(string message) => pageStatus.Text = message;
 
     private static TextBlock Label(string text) => new()
     {
@@ -879,38 +1345,12 @@ public sealed class DashboardWindow : Window
         Margin = new Thickness(0, 8, 0, 4),
     };
 
-    private static TextBox Field(int minLines) => new()
+    private static TextBox Field(int minLines) => Fluent.Input(new TextBox
     {
-        Background = Palette.Selection,
-        Foreground = Palette.Text,
-        CaretBrush = Palette.Accent,
-        BorderBrush = Palette.Edge,
-        BorderThickness = new Thickness(1),
-        Padding = new Thickness(8, 6, 8, 6),
-        FontSize = 13,
         AcceptsReturn = minLines > 1,
         TextWrapping = minLines > 1 ? TextWrapping.Wrap : TextWrapping.NoWrap,
         MinLines = minLines,
         MaxLines = minLines > 1 ? minLines * 2 : 1,
         VerticalScrollBarVisibility = minLines > 1 ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden,
-    };
-
-    private static Button Button(string text, Action onClick)
-    {
-        var button = new Button
-        {
-            Content = text,
-            Foreground = Palette.Text,
-            Background = Palette.Edge,
-            BorderBrush = Palette.Edge,
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(12, 5, 12, 5),
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 12,
-            Cursor = System.Windows.Input.Cursors.Hand,
-        };
-
-        button.Click += (_, _) => onClick();
-        return button;
-    }
+    });
 }

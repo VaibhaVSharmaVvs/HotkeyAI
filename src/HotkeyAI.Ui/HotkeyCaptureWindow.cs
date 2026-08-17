@@ -34,42 +34,55 @@ internal sealed class HotkeyCaptureWindow : Window
         this.fileName = fileName;
 
         Title = $"Hotkey for {name}";
-        Width = 460;
+        Width = 480;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
+        Icon = TrayIcon.WindowIcon();
         Background = Palette.Surface;
         Foreground = Palette.Text;
         FontFamily = new FontFamily("Segoe UI");
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        var layout = new StackPanel { Margin = new Thickness(20) };
+        var layout = new StackPanel { Margin = new Thickness(24) };
 
+        layout.Children.Add(Fluent.Heading(name));
         layout.Children.Add(new TextBlock
         {
             Text = "Press the combination you want.",
             Foreground = Palette.Muted,
-            FontSize = 12,
+            FontSize = 12.5,
+            Margin = new Thickness(0, 6, 0, 0),
         });
 
+        // The chord, drawn as the key it will become, so what you are pressing and what the row
+        // will show are the same picture.
         chordText = new TextBlock
         {
             Text = current,
             Foreground = Palette.Text,
-            FontSize = 22,
-            Margin = new Thickness(0, 14, 0, 6),
+            FontSize = 24,
+            FontFamily = new FontFamily("Consolas"),
             HorizontalAlignment = HorizontalAlignment.Center,
         };
 
-        layout.Children.Add(chordText);
+        layout.Children.Add(new Border
+        {
+            Background = Palette.Raised,
+            BorderBrush = Palette.Edge,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(18, 16, 18, 16),
+            Margin = new Thickness(0, 16, 0, 10),
+            Child = chordText,
+        });
 
         verdict = new TextBlock
         {
             Text = "Waiting for a keypress.",
             Foreground = Palette.Muted,
-            FontSize = 12,
+            FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, 4),
         };
 
         layout.Children.Add(verdict);
@@ -81,25 +94,19 @@ internal sealed class HotkeyCaptureWindow : Window
             Text = "A combination held by a low-level keyboard hook — some AutoHotkey scripts, "
                  + "push-to-talk — looks free here and then never fires.",
             Foreground = Palette.Muted,
-            FontSize = 10,
+            FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 10, 0, 0),
+            Margin = new Thickness(0, 14, 0, 0),
         });
 
-        save = Button("Save", Commit);
+        save = Fluent.Primary("Save", Fluent.Tick, Commit);
         save.IsEnabled = false;
+        save.Focusable = false;
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 16, 0, 0),
-        };
+        var cancel = Fluent.IconButton(Fluent.Cross, "Cancel  (Esc)", Close);
+        cancel.Focusable = false;
 
-        buttons.Children.Add(Button("Cancel  (Esc)", Close));
-        buttons.Children.Add(save);
-        layout.Children.Add(buttons);
-
+        layout.Children.Add(Fluent.Buttons(cancel, save));
         Content = layout;
 
         PreviewKeyDown += OnKey;
@@ -222,24 +229,4 @@ internal sealed class HotkeyCaptureWindow : Window
     private static string Describe(IReadOnlyList<KeyName> chord) =>
         chord.Count == 0 ? "…" : PlanRenderer.DescribeTrigger(new HotkeyAI.Core.Dsl.Trigger { Keys = chord });
 
-    private static Button Button(string text, Action onClick)
-    {
-        var button = new Button
-        {
-            Content = text,
-            Foreground = Palette.Text,
-            Background = Palette.Selection,
-            BorderBrush = Palette.Edge,
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(14, 6, 14, 6),
-            Margin = new Thickness(8, 0, 0, 0),
-            FontSize = 13,
-            Cursor = Cursors.Hand,
-            // Never focusable: a focused button steals Space and Enter from the capture.
-            Focusable = false,
-        };
-
-        button.Click += (_, _) => onClick();
-        return button;
-    }
 }
