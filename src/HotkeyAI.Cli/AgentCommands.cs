@@ -79,7 +79,42 @@ internal static class AgentCommands
             "Registration state is per-run: see the tray menu, or the log in "
             + AgentPaths.Logs);
 
+        ReportStoreAcl();
+
         return Cli.ExitCode.Ok;
+    }
+
+    /// <summary>
+    /// Say whether the store's per-user ACL is in force, on the surface people already read.
+    /// </summary>
+    /// <remarks>
+    /// PLAN.md control 4's "assert" half — security review 2026-08-17, finding L7. Printed here
+    /// because `list` is the command someone runs when asking what the agent is doing with their
+    /// machine, and "who can change these automations" is part of that answer. Silent in the ordinary
+    /// case: a line on every invocation saying nothing is wrong is a line people stop reading.
+    /// </remarks>
+    private static void ReportStoreAcl()
+    {
+        switch (StoreAcl.Audit())
+        {
+            case null:
+                Console.WriteLine("Could not read the store's folder permissions to check them.");
+                break;
+
+            case { Count: 0 }:
+                break;
+
+            case { } unexpected:
+                Console.WriteLine();
+                Console.WriteLine(
+                    $"WARNING: {AgentPaths.Root} grants access to "
+                    + string.Join(", ", unexpected)
+                    + ".");
+                Console.WriteLine(
+                    "Automations there run on a keypress, so anyone who can write to that folder "
+                    + "can change what they do.");
+                break;
+        }
     }
 
     /// <summary>

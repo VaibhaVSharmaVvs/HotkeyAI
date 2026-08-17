@@ -457,6 +457,16 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
    seen the rendered plan and approved it — at which point it's signed. This is the resolution
    of the conflict in challenge 2: it keeps malware from getting silent code execution while
    making hand-authored files a first-class input.
+
+   The ACL is set rather than inherited. `%LOCALAPPDATA%` does inherit a reasonable one — SYSTEM,
+   Administrators and the user — so this control held by accident before, which is the kind that
+   nobody notices going away (security review 2026-08-17, finding L7). A new store is created with
+   a protected DACL granting only this user and SYSTEM; an existing one is left alone, because
+   overruling whatever the user or their IT department configured risks locking someone out of
+   their own automations. Either way the agent audits it at startup and `hotkeyai list` warns if
+   anyone else can reach the folder — automations there run on a keypress, so write access is the
+   ability to change what someone's own hotkeys do. Administrators are exempt from the warning:
+   they can take ownership regardless, and reporting them would be noise on every machine.
 5. **Confirmation on destructive actions.** `terminate_process` prompts **every run**, not once
    per automation, and the prompt says how many processes match and whether child processes go
    with them.

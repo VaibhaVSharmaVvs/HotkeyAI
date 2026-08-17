@@ -115,7 +115,13 @@ public static class AgentHost
     {
         UiThread.Report = AgentLog.Line;
 
+        // Root first, and with its DACL, before anything creates a subfolder under it and inherits
+        // whatever %LOCALAPPDATA% happens to grant. Security review 2026-08-17, finding L7:
+        // PLAN.md control 4 specifies a per-user ACL and nothing set or checked one.
+        StoreAcl.EnsureRoot();
         Directory.CreateDirectory(AgentPaths.Automations);
+
+        ReportStoreAcl();
 
         // Both this and the CLI open the store through one factory. Assembling it in two places
         // is how the CLI ended up blind to two of the four storages.
@@ -359,6 +365,37 @@ public static class AgentHost
     /// An agent running with no keyboard abort is a materially different product from one that has
     /// it, and the user is entitled to know which they have.
     /// </remarks>
+    /// <summary>
+    /// Say, in the log, whether the store's per-user ACL is actually in force.
+    /// </summary>
+    /// <remarks>
+    /// The "assert" half of PLAN.md control 4 — security review 2026-08-17, finding L7. Logged rather
+    /// than enforced: rewriting the ACL of a store that already exists means overruling whatever the
+    /// user or their IT department configured, and getting that wrong locks someone out of their own
+    /// automations. Reported every start, so a control that stops holding is visible.
+    /// </remarks>
+    private static void ReportStoreAcl()
+    {
+        switch (StoreAcl.Audit())
+        {
+            case null:
+                AgentLog.Line("[store] could not read the folder permissions to check them.");
+                break;
+
+            case { Count: 0 }:
+                AgentLog.Line("[store] permissions are per-user, as control 4 requires.");
+                break;
+
+            case { } unexpected:
+                AgentLog.Line(
+                    $"[store] {AgentPaths.Root} grants access to "
+                    + string.Join(", ", unexpected)
+                    + ". Automations here run on a keypress, so anyone who can write to this folder "
+                    + "can change what they do.");
+                break;
+        }
+    }
+
     private static void RegisterPanic(HotkeyHost host)
     {
         var result = host.Register("__panic", PanicChord);
