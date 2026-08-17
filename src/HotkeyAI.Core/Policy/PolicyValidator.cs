@@ -94,6 +94,20 @@ public static partial class PolicyValidator
         PolicyOptions options,
         List<ValidationError> errors)
     {
+        if (all.Count == 0)
+        {
+            // Security review 2026-08-17, finding L11. An empty plan validated, was approvable, and
+            // bound a global chord that did nothing — and a chord is process-wide and
+            // first-come-first-served, so it also took that combination away from whatever else on
+            // the machine wanted it. Refused rather than warned because there is no ValidationResult
+            // severity below "error", and a plan with no actions is a mistake in every case: nobody
+            // writes one on purpose, and the honest reading of one is an edit that went wrong.
+            errors.Add(Error(
+                "/actions",
+                "This plan has no actions, so its hotkey would do nothing while still claiming "
+                + "the key combination system-wide. Add at least one action, or delete the plan."));
+        }
+
         if (all.Count > options.MaxActions)
         {
             errors.Add(Error(
