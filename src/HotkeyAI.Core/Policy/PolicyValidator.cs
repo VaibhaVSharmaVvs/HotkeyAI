@@ -288,7 +288,13 @@ public static partial class PolicyValidator
         }
 
         var assigned = new HashSet<string>(StringComparer.Ordinal);
-        var loopScoped = new HashSet<string>(StringComparer.Ordinal);
+        // Maps a foreach item variable to the pointer of the loop that owns it, so a read can
+        // be told apart from a read *after* the loop. Security review 2026-08-17, finding M3: this
+        // was a HashSet that nothing ever read, so the rule the doc comment above states plainly —
+        // and which the executor enforces at run time by clearing the variable — was never checked.
+        // A plan reading a loop variable afterwards validated clean and then silently interpolated
+        // an empty string.
+        var loopScoped = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var (path, action, _) in all)
         {
@@ -307,6 +313,14 @@ public static partial class PolicyValidator
                     errors.Add(Error(
                         $"{path}/{field}",
                         $"${{{name}}} is read before anything assigns it."));
+                }
+                else if (Escaped(loopScoped, name, path))
+                {
+                    errors.Add(Error(
+                        $"{path}/{field}",
+                        $"${{{name}}} is a foreach item variable, so it only exists inside its "
+                        + "loop. The engine clears it when the loop ends, so reading it here "
+                        + "would interpolate an empty string."));
                 }
 
                 if (property is not null)
@@ -337,6 +351,14 @@ public static partial class PolicyValidator
                         $"{path}/{field}",
                         $"${{{name}}} is read before anything assigns it."));
                 }
+                else if (Escaped(loopScoped, name, path))
+                {
+                    errors.Add(Error(
+                        $"{path}/{field}",
+                        $"${{{name}}} is a foreach item variable, so it only exists inside its "
+                        + "loop. The engine clears it when the loop ends, so reading it here "
+                        + "would interpolate an empty string."));
+                }
 
                 if (property is not null)
                 {
@@ -345,6 +367,20 @@ public static partial class PolicyValidator
             }
         }
     }
+
+    /// <summary>
+    /// Whether this read of a loop item variable happens outside the loop that owns it.
+    /// </summary>
+    /// <remarks>
+    /// Decided by pointer prefix, which works because the walk is depth-first: every action inside
+    /// a loop has the loop's pointer as a prefix, and the first action that does not is the first
+    /// one after it. The loop action itself is excluded — it reads <c>source</c>, not the item.
+    /// </remarks>
+    private static bool Escaped(
+        Dictionary<string, string> loopScoped, string name, string path) =>
+        loopScoped.TryGetValue(name, out var owner)
+        && !path.StartsWith(owner + "/", StringComparison.Ordinal)
+        && !string.Equals(path, owner, StringComparison.Ordinal);
 
     private static void CheckProperty(
         string path,
@@ -377,33 +413,42 @@ public static partial class PolicyValidator
         HotkeyAction action,
         Dictionary<string, VariableType> declared,
         HashSet<string> assigned,
-        HashSet<string> loopScoped,
+        Dictionary<string, string> loopScoped,
         List<ValidationError> errors)
     {
+        // Anything other than a foreach assigning the name means it is no longer only a loop
+        // item, so reading it after the loop becomes legitimate again. Without this, reusing a
+        // name for both purposes would be reported forever after the first loop.
         switch (action)
         {
             case ListDirectoriesAction a:
                 Write(path, "into", a.Into, VariableType.PathList, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case ListFilesAction a:
                 Write(path, "into", a.Into, VariableType.PathList, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case PathExistsAction a:
                 Write(path, "into", a.Into, VariableType.Boolean, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case GetClipboardAction a:
                 Write(path, "into", a.Into, VariableType.Text, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case ShowInputAction a:
                 Write(path, "into", a.Into, VariableType.Text, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case ShowPickerAction a:
                 WriteFromList(path, a.Source, "source", a.Into, "into", declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case ForEachAction a:
@@ -412,7 +457,7 @@ public static partial class PolicyValidator
                     declared, assigned, errors);
 
                 // Scoped to the body. Reading it after the loop is a genuine mistake.
-                loopScoped.Add(a.ItemVariable);
+                loopScoped[a.ItemVariable] = path;
                 break;
         }
     }
