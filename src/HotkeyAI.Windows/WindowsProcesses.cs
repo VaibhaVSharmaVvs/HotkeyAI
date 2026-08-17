@@ -6,8 +6,8 @@ namespace HotkeyAI.Windows;
 /// <summary>Process launch, lookup and termination.</summary>
 public sealed class WindowsProcesses(AppResolver resolver) : IProcesses
 {
-    public ValueTask<string?> ResolveAsync(string logicalName, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(resolver.Resolve(logicalName));
+    public ValueTask<AppResolution> ResolveAsync(string logicalName, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(resolver.ResolveForLaunch(logicalName));
 
     public ValueTask LaunchAsync(
         string executablePath,

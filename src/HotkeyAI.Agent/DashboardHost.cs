@@ -598,7 +598,28 @@ internal sealed class DashboardHost(
 
         try
         {
-            var node = JsonNode.Parse(File.ReadAllText(automation.Path))
+            var onDisk = File.ReadAllText(automation.Path);
+
+            // The bytes must still be the bytes whose approval was just checked.
+            //
+            // Security review 2026-08-17, finding H3: this read the file *after* recording
+            // wasApproved from an earlier snapshot, then re-approved whatever it had written. The
+            // comment below claimed this code "knows it touched nothing else" — it did not know
+            // that. Anything able to write the automations folder, which is precisely the dropper
+            // trust-on-first-use exists to stop, could swap an approved plan's body and win the
+            // race on the next rebind, and the swapped body would be signed without the user ever
+            // seeing it.
+            if (!string.Equals(
+                    AutomationStore.HashOf(onDisk),
+                    automation.ContentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return $"{fileName} changed on disk while it was being rebound. Nothing was "
+                     + "written. Reload and try again — and read the plan, because this is what a "
+                     + "file being edited underneath you looks like.";
+            }
+
+            var node = JsonNode.Parse(onDisk)
                 ?? throw new JsonException("The plan is empty.");
 
             node["trigger"]!["keys"] = new JsonArray(

@@ -1,3 +1,4 @@
+using HotkeyAI.Engine.Platform;
 using Microsoft.Win32;
 
 namespace HotkeyAI.Windows;
@@ -100,6 +101,72 @@ public sealed class AppResolver
     public IReadOnlyDictionary<string, string?> ResolveAll() =>
         Candidates.Keys.ToDictionary(name => name, Resolve, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Where applications are allowed to live.
+    /// </summary>
+    /// <remarks>
+    /// Resolution consults sources the user can write — HKCU's <c>App Paths</c> and <c>PATH</c> —
+    /// so the answer has to be checked rather than trusted. These are the directories a real
+    /// installation uses; anything resolving outside them is reported instead of launched.
+    /// <para>
+    /// <c>%LOCALAPPDATA%\Programs</c> is here because per-user installs are ordinary now — VS Code
+    /// and Cursor both live there — which does mean a user-writable directory is trusted. That is a
+    /// deliberate limit of this fix: it closes redirection through the registry and PATH, not
+    /// tampering with an installed binary, which nothing at this layer can detect.
+    /// </para>
+    /// </remarks>
+    private static readonly string[] TrustedRoots =
+    [
+        "%ProgramFiles%",
+        "%ProgramFiles(x86)%",
+        "%WINDIR%",
+        @"%LOCALAPPDATA%\Programs",
+        @"%LOCALAPPDATA%\Microsoft\WindowsApps",
+        @"%ProgramData%\chocolatey",
+    ];
+
+    /// <summary>
+    /// Resolve for launching, refusing an executable found somewhere it should not be.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="Resolve"/>, which the dashboard and the validator use to answer
+    /// "is this app installed" — a question where a binary in an odd place is still an answer.
+    /// Launching is the operation that needs the stricter rule.
+    /// </remarks>
+    public AppResolution ResolveForLaunch(string logicalName)
+    {
+        if (Resolve(logicalName) is not { } resolved)
+        {
+            return AppResolution.None;
+        }
+
+        var full = Path.GetFullPath(resolved);
+
+        foreach (var root in TrustedRoots)
+        {
+            var expanded = Environment.ExpandEnvironmentVariables(root);
+
+            // Unexpanded variables come back verbatim, and %ProgramFiles(x86)% is absent on ARM.
+            if (expanded.Contains('%', StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (full.StartsWith(
+                    expanded.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return AppResolution.At(full);
+            }
+        }
+
+        return AppResolution.Refused(
+            $"it resolved to \"{full}\", which is not in a directory applications are installed "
+            + "in. A logical app name is looked up through the registry and PATH, both of which "
+            + "this account can write, so a resolved path outside the install directories is "
+            + "treated as redirection rather than an installation.");
+    }
+
     private static string? Probe(string logicalName)
     {
         if (!Candidates.TryGetValue(logicalName, out var executables))
@@ -142,10 +209,20 @@ public sealed class AppResolver
         return null;
     }
 
-    /// <summary>The location Windows itself uses when a bare name is typed into Run.</summary>
+    /// <summary>
+    /// The location Windows itself uses when a bare name is typed into Run.
+    /// </summary>
+    /// <remarks>
+    /// Machine before user, and that order is the fix for security review 2026-08-17 finding H5.
+    /// It was the other way round, and HKCU is writable by any process running as the user — so
+    /// malware could point <c>App Paths\notepad.exe</c> at its own binary and an automation
+    /// approved months earlier, rendered as "Launch notepad", would launch it. This file already
+    /// put PATH last on the grounds that "anything can put an executable on it"; HKCU deserves the
+    /// same suspicion and was getting the opposite.
+    /// </remarks>
     private static string? FromAppPaths(string executable)
     {
-        foreach (var root in new[] { Registry.CurrentUser, Registry.LocalMachine })
+        foreach (var root in new[] { Registry.LocalMachine, Registry.CurrentUser })
         {
             using var key = root.OpenSubKey(AppPathsKey + executable);
             if (key?.GetValue(null) is string value && value.Length > 0)

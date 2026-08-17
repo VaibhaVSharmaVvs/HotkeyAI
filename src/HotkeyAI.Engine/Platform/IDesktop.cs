@@ -58,10 +58,28 @@ public enum InputHazard
     ElevatedWindow,
 }
 
+/// <summary>
+/// What resolving a logical app name produced.
+/// </summary>
+/// <param name="Path">The executable, or null when there is nothing to launch.</param>
+/// <param name="Refusal">
+/// Why a resolved executable was rejected, or null. Separate from "not installed" because the two
+/// need different words: one is a missing application, the other is an application found somewhere
+/// it should not be — which is a warning, not an absence. Security review 2026-08-17, finding H5.
+/// </param>
+public readonly record struct AppResolution(string? Path, string? Refusal)
+{
+    public static AppResolution None => new(null, null);
+
+    public static AppResolution At(string path) => new(path, null);
+
+    public static AppResolution Refused(string why) => new(null, why);
+}
+
 public interface IProcesses
 {
-    /// <summary>Resolve a logical app name to an executable, or null if not installed.</summary>
-    ValueTask<string?> ResolveAsync(string logicalName, CancellationToken cancellationToken);
+    /// <summary>Resolve a logical app name to an executable.</summary>
+    ValueTask<AppResolution> ResolveAsync(string logicalName, CancellationToken cancellationToken);
 
     ValueTask LaunchAsync(
         string executablePath,

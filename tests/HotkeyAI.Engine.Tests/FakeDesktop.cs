@@ -69,8 +69,10 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
 
     // ------------------------------- processes -------------------------------
 
-    public ValueTask<string?> ResolveAsync(string logicalName, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(InstalledApps.GetValueOrDefault(logicalName));
+    public ValueTask<AppResolution> ResolveAsync(string logicalName, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(InstalledApps.GetValueOrDefault(logicalName) is { } path
+            ? AppResolution.At(path)
+            : AppResolution.None);
 
     public async ValueTask LaunchAsync(
         string executablePath,

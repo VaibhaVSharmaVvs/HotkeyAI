@@ -115,14 +115,22 @@ public sealed partial class PlanExecutor
         if (action.App is { } app)
         {
             var resolved = await desktop.Processes.ResolveAsync(app, token).ConfigureAwait(false);
-            if (resolved is null)
+
+            // A refusal is not an absence. "notepad resolved to something in AppData" needs
+            // saying out loud, where "not installed" would hide it.
+            if (resolved.Refusal is { } refusal)
+            {
+                return (StepOutcome.Failed, $"Refused to launch \"{app}\": {refusal}");
+            }
+
+            if (resolved.Path is null)
             {
                 return (StepOutcome.Failed,
                     $"\"{app}\" is not installed, or the engine could not find it. The plan "
                     + "names a logical application so this can be reported rather than guessed.");
             }
 
-            executable = resolved;
+            executable = resolved.Path;
         }
         else
         {
