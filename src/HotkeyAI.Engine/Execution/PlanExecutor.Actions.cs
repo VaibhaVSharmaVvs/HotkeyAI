@@ -91,8 +91,10 @@ public sealed partial class PlanExecutor
         // ------------------------------- control -------------------------------
         WaitAction a => await WaitAsync(a, token).ConfigureAwait(false),
 
+        // ForLog, not Interpolate: this string becomes a LogEntry, the transcript, the file in
+        // %LOCALAPPDATA%\HotkeyAI\logs and the repair prompt. Security review 2026-08-17, M8.
         AbortAction a => (StepOutcome.Aborted,
-            run.Variables.Interpolate(a.Reason) is { Length: > 0 } reason
+            run.Variables.InterpolateForLog(a.Reason) is { Length: > 0 } reason
                 ? reason
                 : "The plan called abort."),
 
@@ -398,7 +400,11 @@ public sealed partial class PlanExecutor
         GetClipboardAction action, RunState run, CancellationToken token)
     {
         var text = await desktop.Clipboard.ReadAsync(token).ConfigureAwait(false);
-        run.Variables.SetText(action.Into, text);
+
+        // Marked as coming from outside the plan, so no log line can ever render it — security
+        // review 2026-08-17, finding M8. Redacting it here and then interpolating it into
+        // abort.reason was the hole.
+        run.Variables.SetTextFromOutsideThePlan(action.Into, text);
 
         // Contents redacted — safety control 6.
         return (StepOutcome.Succeeded, $"Read {text.Length} character(s) from the clipboard.");
@@ -441,7 +447,9 @@ public sealed partial class PlanExecutor
             return (StepOutcome.Failed, "The user cancelled the prompt.");
         }
 
-        run.Variables.SetText(action.Into, answer);
+        // Same reasoning as the clipboard: a prompt answer is whatever the user typed, which
+        // may be a password, and the plan author never chose to write it down.
+        run.Variables.SetTextFromOutsideThePlan(action.Into, answer);
         return (StepOutcome.Succeeded, "Captured the user's input.");
     }
 

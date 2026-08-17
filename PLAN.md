@@ -454,6 +454,13 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
 6. **Never log secrets.** Execution logs record action ids and outcomes, and redact
    `type_text` payloads and clipboard content by default. This matters more in V1 than V2 —
    you will be pasting logs into a repair prompt by hand.
+
+   Enforced by provenance, not by pattern-matching the value: a variable written by
+   `get_clipboard` or `show_input` is marked as coming from outside the plan, and `abort.reason`
+   — the one field whose interpolated text becomes a log line — renders it as
+   `[name redacted]`. Redacting the two sources and then interpolating one of them into a step
+   detail was the hole (security review 2026-08-17, finding M8). Window titles and picked paths
+   are still logged; that is a deliberate limit, and item 7's retention question covers it.
 7. **No egress in V1.** Nothing leaves the machine; the authoring bridge is filesystem and a
    local pipe. Before V2's API mode ships, add path/title redaction at the boundary — prompts
    and repair bundles will otherwise carry file paths and window titles.
