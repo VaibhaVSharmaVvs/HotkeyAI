@@ -68,7 +68,7 @@ public sealed class ExecutionTests
         var desktop = new FakeDesktop
         {
             InstalledApps = { ["vscode"] = @"C:\Code.exe" },
-            OpenWindows = { new WindowRef(1, "Code", "project — VS Code", false) },
+            OpenWindows = { new WindowRef(1, "Code", "project — VS Code") },
         };
 
         var plan = Plan("""
@@ -254,7 +254,7 @@ public sealed class ExecutionTests
         var desktop = new FakeDesktop
         {
             InstalledApps = { ["vscode"] = @"C:\Code.exe" },
-            OpenWindows = { new WindowRef(1, "Code", "VS Code", false) },
+            OpenWindows = { new WindowRef(1, "Code", "VS Code") },
             Directories = { [@"C:\Users\test\Projects"] = [@"C:\Users\test\Projects\scout-os"] },
             PickerChoice = @"C:\Users\test\Projects\scout-os",
         };

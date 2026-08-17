@@ -93,7 +93,7 @@ public sealed class CorpusExecutionTests
                  { "Notepad", "Code", "chrome", "olk", "ms-teams", "slack", "a", "polite", "stubborn" })
         {
             desktop.RunningProcesses.Add(process);
-            desktop.OpenWindows.Add(new WindowRef(desktop.OpenWindows.Count + 1, process, $"{process} window", false));
+            desktop.OpenWindows.Add(new WindowRef(desktop.OpenWindows.Count + 1, process, $"{process} window"));
         }
 
         foreach (var path in new[]

@@ -36,11 +36,18 @@ public interface IDesktop
 /// <param name="Id">Opaque platform handle.</param>
 /// <param name="ProcessName">Owning process, without the extension.</param>
 /// <param name="Title">Current window title.</param>
-/// <param name="IsElevated">
-/// True if the window runs at a higher integrity level than this process. Synthetic input
-/// cannot reach it and fails <i>silently</i>, so this must be checked rather than discovered.
-/// </param>
-public readonly record struct WindowRef(long Id, string ProcessName, string Title, bool IsElevated);
+/// <remarks>
+/// There used to be an <c>IsElevated</c> here, and nothing in the repository ever read it — while
+/// computing it cost three syscalls for every visible window on every window search, including each
+/// 150 ms poll of a <c>wait_for_window</c>. Security review 2026-08-17, finding L9.
+/// <para>
+/// Its absence is not a gap. The integrity check that matters is
+/// <c>IInput.CheckHazardAsync</c>, which asks about the window that is actually about to receive
+/// input, at the moment it is about to receive it — a field on a record fetched earlier would be a
+/// weaker answer to a question that is only ever asked about the foreground.
+/// </para>
+/// </remarks>
+public readonly record struct WindowRef(long Id, string ProcessName, string Title);
 
 /// <summary>Why sending synthetic input right now would be unsafe.</summary>
 public enum InputHazard
