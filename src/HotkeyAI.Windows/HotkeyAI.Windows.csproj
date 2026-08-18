@@ -18,4 +18,10 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Most of this project is Win32 calls that cannot be tested without a desktop, but the parts
+         that are pure decisions can be, and they are the parts that go quietly wrong. -->
+    <InternalsVisibleTo Include="HotkeyAI.Windows.Tests" />
+  </ItemGroup>
+
 </Project>

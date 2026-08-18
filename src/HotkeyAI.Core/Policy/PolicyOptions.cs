@@ -45,6 +45,14 @@ public sealed record PolicyOptions
     /// <summary>Bounds for <c>send_keys.repeat</c>.</summary>
     public Range<int> KeyRepeat { get; init; } = new(1, 50);
 
+    /// <summary>Longest permitted <c>titleRegex</c>.</summary>
+    /// <remarks>
+    /// Not a safety bound in the way the others are — the engine matches titles on a linear-time
+    /// engine, so no pattern can hang it. This is a sanity limit: window titles are short, and a
+    /// 200-character pattern is matching something else.
+    /// </remarks>
+    public int MaxTitleRegexLength { get; init; } = 200;
+
     /// <summary>Defaults, with no allowed roots.</summary>
     public static PolicyOptions Default { get; } = new();
 }

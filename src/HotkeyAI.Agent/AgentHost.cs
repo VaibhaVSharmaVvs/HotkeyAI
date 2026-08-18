@@ -35,8 +35,11 @@ public static class AgentHost
     /// loudly — running automations with no way to stop them is a materially worse product, and
     /// the user deserves to know which one they have.
     /// </remarks>
-    private static readonly KeyName[] PanicChord =
-        [KeyName.Ctrl, KeyName.Alt, KeyName.Shift, KeyName.Esc];
+    /// <remarks>
+    /// From Core, so the chord the agent registers and the chord the validator refuses as a trigger
+    /// are the same list rather than two that happen to match today.
+    /// </remarks>
+    private static IReadOnlyList<KeyName> PanicChord => HotkeyChord.Panic;
 
     /// <summary>
     /// Guards against a second agent running.
@@ -112,7 +115,22 @@ public static class AgentHost
     {
         UiThread.Report = AgentLog.Line;
 
+        // Root first, and with its DACL, before anything creates a subfolder under it and inherits
+        // whatever %LOCALAPPDATA% happens to grant. PLAN.md control 4 specifies a per-user ACL, and
+        // nothing used to set or check one.
+        StoreAcl.EnsureRoot();
         Directory.CreateDirectory(AgentPaths.Automations);
+
+        ReportStoreAcl();
+
+        // Logs used to hold window titles and file paths for as long as the machine lasted, and
+        // two weeks covers every reason anyone opens one.
+        if (LogRetention.Prune() is > 0 and var removed)
+        {
+            AgentLog.Line(
+                $"[logs] removed {removed} log file(s) past the "
+                + $"{LogRetention.Window.TotalDays:F0}-day retention.");
+        }
 
         // Both this and the CLI open the store through one factory. Assembling it in two places
         // is how the CLI ended up blind to two of the four storages.
@@ -129,20 +147,19 @@ public static class AgentHost
 
         using var host = new HotkeyHost();
 
+        // The panic key goes first, before any automation gets a chance at a chord.
+        // RegisterHotKey is first-come-first-served, so registering automations first meant one
+        // of them could take Ctrl+Alt+Shift+Esc and the abort key would simply fail to bind.
+        RegisterPanic(host);
+
         var runnable = new Dictionary<string, Automation>(StringComparer.Ordinal);
         var registrations = Register(host, loaded, runnable, history);
 
         Report(loaded, registrations, history);
         history.Save();
 
-        var panicResult = host.Register("__panic", PanicChord);
-        AgentLog.Line(panicResult.Registered
-            ? "Panic key   Ctrl+Alt+Shift+Esc — stops a running automation."
-            : $"Panic key   UNAVAILABLE ({panicResult.Describe()}). Automations will run with no "
-              + "way to stop them from the keyboard; quit from the tray instead.");
-
         var desktop = new WindowsDesktop(new WpfPrompts());
-        var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots));
+        var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots, new WindowsRealPath()));
         // RunContinuationsAsynchronously matters here. Quit is signalled from the tray menu's
         // click handler, which runs on the UI thread; without this the whole shutdown sequence —
         // unregistering hotkeys, joining the pump, disposing the tray — would run inline on that
@@ -201,11 +218,11 @@ public static class AgentHost
         }
 
         var dashboard = new DashboardHost(
-            store, policy, Rebind, host.Probe, Suspend, PanicChord, lastRuns, versions, runner);
+            store, policy, Rebind, host.Probe, Suspend, lastRuns, versions, runner);
 
         using var tray = await TrayIcon.ShowAsync(
             Tooltip(loaded.Count, live),
-            () => Menu(store, runnable, dashboard, Rebind, quit),
+            () => Menu(store, runnable, dashboard, Rebind, runner, quit),
             () => DashboardWindow.Open(dashboard),
             AgentLog.Line).ConfigureAwait(false);
 
@@ -263,6 +280,7 @@ public static class AgentHost
         Dictionary<string, Automation> runnable,
         DashboardHost dashboard,
         Action rebind,
+        AutomationRunner runner,
         TaskCompletionSource quit)
     {
         // Counted at open time rather than captured at startup, because Reload changes it. A tray
@@ -281,6 +299,15 @@ public static class AgentHost
         [
             new TrayCommand($"{live} of {loaded.Count} automations live"),
             TrayCommand.Separator,
+
+            // A mouse-reachable abort. The panic key is the fast path, but it can fail to
+            // register — another application may already hold the chord — and until now that left
+            // no way at all to stop a running automation.
+            // Shown only while something is running, so the menu does not offer an action that
+            // would do nothing.
+            .. runner.IsBusy
+                ? new[] { new TrayCommand("Stop running automation", runner.Panic, Glyph: "") }
+                : [],
             new TrayCommand("Dashboard", () => DashboardWindow.Open(dashboard), Glyph: ""),
             new TrayCommand(
                 "Automations folder", () => Shell.Open(AgentPaths.Automations), Glyph: ""),
@@ -331,8 +358,60 @@ public static class AgentHost
         Report(loaded, registrations, history);
         history.Save();
 
-        // The panic key went with UnregisterAll, so it has to come back.
-        host.Register("__panic", PanicChord);
+        // The panic key went with UnregisterAll, so it has to come back — and the result is
+        // reported, not discarded. Startup said so loudly while every folder change, dashboard
+        // rebind and suspend-restore came through here in silence, so the abort key could go
+        // missing at any point after launch with nothing anywhere to say it had.
+        RegisterPanic(host);
+    }
+
+    /// <summary>
+    /// Bind the panic key and say what happened.
+    /// </summary>
+    /// <remarks>
+    /// Always through here, so the outcome is reported on every path rather than only at startup.
+    /// An agent running with no keyboard abort is a materially different product from one that has
+    /// it, and the user is entitled to know which they have.
+    /// </remarks>
+    /// <summary>
+    /// Say, in the log, whether the store's per-user ACL is actually in force.
+    /// </summary>
+    /// <remarks>
+    /// The "assert" half of PLAN.md control 4. Logged rather than enforced: rewriting the ACL of a
+    /// store that already exists means overruling whatever the user or their IT department
+    /// configured, and getting that wrong locks someone out of their own
+    /// automations. Reported every start, so a control that stops holding is visible.
+    /// </remarks>
+    private static void ReportStoreAcl()
+    {
+        switch (StoreAcl.Audit())
+        {
+            case null:
+                AgentLog.Line("[store] could not read the folder permissions to check them.");
+                break;
+
+            case { Count: 0 }:
+                AgentLog.Line("[store] permissions are per-user, as control 4 requires.");
+                break;
+
+            case { } unexpected:
+                AgentLog.Line(
+                    $"[store] {AgentPaths.Root} grants access to "
+                    + string.Join(", ", unexpected)
+                    + ". Automations here run on a keypress, so anyone who can write to this folder "
+                    + "can change what they do.");
+                break;
+        }
+    }
+
+    private static void RegisterPanic(HotkeyHost host)
+    {
+        var result = host.Register("__panic", PanicChord);
+
+        AgentLog.Line(result.Registered
+            ? "Panic key   Ctrl+Alt+Shift+Esc — stops a running automation."
+            : $"Panic key   UNAVAILABLE ({result.Describe()}). Automations will run with no way "
+              + "to stop them from the keyboard; use Stop in the tray menu instead.");
     }
 
     private static void ToggleAutostart(bool currentlyEnabled)

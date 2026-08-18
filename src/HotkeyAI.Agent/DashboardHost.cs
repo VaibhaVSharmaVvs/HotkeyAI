@@ -30,7 +30,6 @@ internal sealed class DashboardHost(
     Action rebind,
     Func<IReadOnlyList<KeyName>, RegistrationResult> probe,
     Func<IDisposable> suspendHotkeys,
-    IReadOnlyList<KeyName> panicChord,
     IReadOnlyDictionary<string, RunRecord> lastRuns,
     IVersionStore versions,
     AutomationRunner runner) : IDashboardHost
@@ -517,14 +516,12 @@ internal sealed class DashboardHost(
             return new HotkeyAvailability(false, problems[0]);
         }
 
+        // No separate panic-chord test here any more: HotkeyChord.Problems above owns that rule
+        // now, so the dashboard and the validator cannot disagree about it. They did — the
+        // dashboard refused the panic chord while hand-authored JSON sailed through, which is the
+        // drift HotkeyChord was extracted to prevent.
         var chord = HotkeyChord.Normalise(keys);
         var rendered = PlanRenderer.DescribeTrigger(new Trigger { Keys = chord });
-
-        if (Same(chord, panicChord))
-        {
-            return new HotkeyAvailability(
-                false, $"{rendered} is the panic key, which stops a running automation.");
-        }
 
         // Checked before probing, and load-bearing rather than a nicety. While the capture window
         // is open every hotkey is released, so a chord another automation owns probes as *free* —
@@ -601,7 +598,27 @@ internal sealed class DashboardHost(
 
         try
         {
-            var node = JsonNode.Parse(File.ReadAllText(automation.Path))
+            var onDisk = File.ReadAllText(automation.Path);
+
+            // The bytes must still be the bytes whose approval was just checked.
+            //
+            // This used to read the file *after* recording wasApproved from an earlier snapshot,
+            // then re-approve whatever it had written. The comment below claimed this code "knows
+            // it touched nothing else" — it did not know that. Anything able to write the
+            // automations folder, which is precisely the dropper trust-on-first-use exists to stop,
+            // could swap an approved plan's body and win the race on the next rebind, and the
+            // swapped body would be signed without the user ever seeing it.
+            if (!string.Equals(
+                    AutomationStore.HashOf(onDisk),
+                    automation.ContentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return $"{fileName} changed on disk while it was being rebound. Nothing was "
+                     + "written. Reload and try again — and read the plan, because this is what a "
+                     + "file being edited underneath you looks like.";
+            }
+
+            var node = JsonNode.Parse(onDisk)
                 ?? throw new JsonException("The plan is empty.");
 
             node["trigger"]!["keys"] = new JsonArray(

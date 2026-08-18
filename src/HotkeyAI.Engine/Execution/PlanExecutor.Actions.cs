@@ -10,6 +10,7 @@ public sealed partial class PlanExecutor
         HotkeyAction action, RunState run, CancellationToken token) => action switch
     {
         // ------------------------------- process -------------------------------
+
         LaunchProcessAction a => await LaunchAsync(a, run, token).ConfigureAwait(false),
 
         TerminateProcessAction a => await TerminateAsync(a, token).ConfigureAwait(false),
@@ -58,12 +59,12 @@ public sealed partial class PlanExecutor
 
         // ------------------------------- files -------------------------------
         ListDirectoriesAction a => await ListAsync(
-            run.Variables.Interpolate(a.Path), a.Into, run,
+            Both(run, a.Path), a.Into, run,
             path => desktop.Files.ListDirectoriesAsync(path, a.Depth ?? 1, token), token)
             .ConfigureAwait(false),
 
         ListFilesAction a => await ListAsync(
-            run.Variables.Interpolate(a.Path), a.Into, run,
+            Both(run, a.Path), a.Into, run,
             path => desktop.Files.ListFilesAsync(path, a.Pattern, a.Depth ?? 1, token), token)
             .ConfigureAwait(false),
 
@@ -91,8 +92,10 @@ public sealed partial class PlanExecutor
         // ------------------------------- control -------------------------------
         WaitAction a => await WaitAsync(a, token).ConfigureAwait(false),
 
+        // ForLog, not Interpolate: this string becomes a LogEntry, the transcript, the file in
+        // %LOCALAPPDATA%\HotkeyAI\logs and the repair prompt.
         AbortAction a => (StepOutcome.Aborted,
-            run.Variables.Interpolate(a.Reason) is { Length: > 0 } reason
+            run.Variables.InterpolateForLog(a.Reason) is { Length: > 0 } reason
                 ? reason
                 : "The plan called abort."),
 
@@ -107,71 +110,159 @@ public sealed partial class PlanExecutor
 
     // ------------------------------- process -------------------------------
 
+    /// <summary>
+    /// A value the engine acts on, paired with the version of it that is safe to write down.
+    /// </summary>
+    /// <param name="Value">The real interpolated value. Everything the OS sees uses this.</param>
+    /// <param name="Loggable">
+    /// The same template with anything from outside the plan redacted. Everything that becomes a
+    /// log line uses this. </param>
+    /// <remarks>
+    /// Redacting <c>abort.reason</c> alone was not enough: several handlers interpolate a path and
+    /// then put it in a step detail — in the success line and, worse, in the guard's refusal, which
+    /// fires for <em>any</em> value that is not a valid in-root path. So a clipboard holding a
+    /// credential rather than a path was echoed verbatim into the transcript, the agent log and the
+    /// repair prompt.
+    /// <para>
+    /// A record rather than two locals per call site: the whole failure was one value used for two
+    /// purposes, and naming both purposes once makes the mix-up visible at every use.
+    /// </para>
+    /// </remarks>
+    private readonly record struct Resolved(string Value, string Loggable);
+
+    /// <summary>Interpolate a template both ways at once.</summary>
+    private static Resolved Both(RunState run, string? template) =>
+        new(run.Variables.Interpolate(template), run.Variables.InterpolateForLog(template));
+
     private async Task<(StepOutcome, string)> LaunchAsync(
         LaunchProcessAction action, RunState run, CancellationToken token)
     {
         string executable;
 
+        // What the log is allowed to say. Identical to `executable` unless the path came from a
+        // variable holding clipboard or prompt text.
+        string loggableExecutable;
+
         if (action.App is { } app)
         {
             var resolved = await desktop.Processes.ResolveAsync(app, token).ConfigureAwait(false);
-            if (resolved is null)
+
+            // A refusal is not an absence. "notepad resolved to something in AppData" needs
+            // saying out loud, where "not installed" would hide it.
+            if (resolved.Refusal is { } refusal)
+            {
+                return (StepOutcome.Failed, $"Refused to launch \"{app}\": {refusal}");
+            }
+
+            if (resolved.Path is null)
             {
                 return (StepOutcome.Failed,
                     $"\"{app}\" is not installed, or the engine could not find it. The plan "
                     + "names a logical application so this can be reported rather than guessed.");
             }
 
-            executable = resolved;
+            // Resolution went through the app registry, so this is the engine's own string rather
+            // than anything the plan supplied. Nothing to redact.
+            executable = resolved.Path;
+            loggableExecutable = resolved.Path;
         }
         else
         {
             // Safety control 2, run-time half: the literal path was checked at validation, but
             // it may interpolate, so the resolved value is what matters.
-            executable = run.Variables.Interpolate(action.Path);
-            if (!pathGuard.IsAllowed(executable, out var reason))
+            var target = Both(run, action.Path);
+            executable = target.Value;
+            loggableExecutable = target.Loggable;
+
+            if (!pathGuard.IsAllowed(target.Value, target.Loggable, out var reason))
             {
                 return (StepOutcome.Failed, $"Refused to launch: {reason}");
             }
         }
 
         var argv = action.Argv.Select(run.Variables.Interpolate).ToList();
-        var workingDirectory = action.WorkingDirectory is null
-            ? null
-            : run.Variables.Interpolate(action.WorkingDirectory);
+        var working = action.WorkingDirectory is null
+            ? (Resolved?)null
+            : Both(run, action.WorkingDirectory);
 
-        if (workingDirectory is not null && !pathGuard.IsAllowed(workingDirectory, out var why))
+        if (working is { } directory
+            && !pathGuard.IsAllowed(directory.Value, directory.Loggable, out var why))
         {
             return (StepOutcome.Failed, $"Refused: working directory {why}");
         }
 
         await desktop.Processes
-            .LaunchAsync(executable, argv, workingDirectory, token)
+            .LaunchAsync(executable, argv, working?.Value, token)
             .ConfigureAwait(false);
 
+        // argv is counted, never listed — it may hold clipboard text too, and a count is all the
+        // log needs to explain what happened.
         return (StepOutcome.Succeeded,
-            argv.Count == 0 ? $"Launched {executable}." : $"Launched {executable} with {argv.Count} argument(s).");
+            argv.Count == 0
+                ? $"Launched {loggableExecutable}."
+                : $"Launched {loggableExecutable} with {argv.Count} argument(s).");
+    }
+
+    /// <summary>
+    /// The confirmation question, saying how many and how hard.
+    /// </summary>
+    /// <remarks>
+    /// The count and the tree warning are both there because this is the last thing between a plan
+    /// and unsaved work. <c>force</c> uses <c>Kill(entireProcessTree: true)</c>, which is a very
+    /// different act from asking a window to close, and the old prompt worded them identically
+    /// apart from three words.
+    /// </remarks>
+    private static string Question(string processName, int matching, bool force)
+    {
+        var subject = matching == 1
+            ? $"1 {processName} process"
+            : $"all {matching} {processName} processes";
+
+        return force
+            ? $"Force-close {subject} without saving? This also kills any child processes."
+            : $"Close {subject}?";
     }
 
     private async Task<(StepOutcome, string)> TerminateAsync(
         TerminateProcessAction action, CancellationToken token)
     {
+        var force = action.Force == true;
+
+        // Counted before asking. The prompt used to say "Close chrome?" while the terminate killed
+        // every process of that name — routinely a dozen for a browser or an editor, and with force
+        // it takes each one's child processes too. A prompt that understates what it is about to do
+        // is worse than no prompt, because the user learns to trust it.
+        var matching = await desktop.Processes
+            .CountAsync(action.ProcessName, token)
+            .ConfigureAwait(false);
+
+        if (matching == 0)
+        {
+            // Nothing to ask about. Asking anyway trains the reflex this prompt depends on.
+            return (StepOutcome.Succeeded, $"No {action.ProcessName} process was running.");
+        }
+
         // Safety control 5. Asked once per action, not once per run, because the user is
         // approving this specific kill rather than the idea of killing things.
-        var approved = await desktop.Prompts.ConfirmAsync(
-            $"Close {action.ProcessName}{(action.Force == true ? " without saving" : "")}?",
-            token).ConfigureAwait(false);
+        var approved = await desktop.Prompts
+            .ConfirmAsync(Question(action.ProcessName, matching, force), token)
+            .ConfigureAwait(false);
 
         if (!approved)
         {
             return (StepOutcome.Failed, "The user declined to close the process.");
         }
 
-        await desktop.Processes
-            .TerminateAsync(action.ProcessName, action.Force == true, token)
+        var closed = await desktop.Processes
+            .TerminateAsync(action.ProcessName, force, token)
             .ConfigureAwait(false);
 
-        return (StepOutcome.Succeeded, $"Terminated {action.ProcessName}.");
+        // The count is reported, not assumed: a process can exit or refuse between the count and
+        // the kill, and "Terminated chrome." said nothing about how much actually happened.
+        return (StepOutcome.Succeeded,
+            closed == 1
+                ? $"Closed 1 {action.ProcessName} process."
+                : $"Closed {closed} {action.ProcessName} processes.");
     }
 
     // ------------------------------- window -------------------------------
@@ -197,17 +288,41 @@ public sealed partial class PlanExecutor
 
     // ------------------------------- input -------------------------------
 
+    /// <summary>
+    /// Characters typed between hazard checks.
+    /// </summary>
+    /// <remarks>
+    /// Typing paces at 5 ms per character, so 32 is a check roughly every 160 ms — often enough
+    /// that a window taking focus gets at most a few characters, cheap enough not to matter: the
+    /// check is a handful of syscalls against a payload that is already spending 160 ms in
+    /// <c>SendInput</c>.
+    /// </remarks>
+    private const int TypingRecheckChars = 32;
+
     private async Task<(StepOutcome, string)> SendKeysAsync(
         SendKeysAction action, CancellationToken token)
     {
-        if (await BlockedAsync(token).ConfigureAwait(false) is { } blocked)
-        {
-            return blocked;
-        }
+        var repeat = Math.Max(1, action.Repeat ?? 1);
 
-        await desktop.Input
-            .SendChordAsync(action.Keys, action.Repeat ?? 1, token)
-            .ConfigureAwait(false);
+        for (var i = 0; i < repeat; i++)
+        {
+            // Every iteration, not just the first: repeat goes to 50, and the guard used to be
+            // checked once before the whole run of them.
+            //
+            // Hazards only, deliberately — no foreground-identity check, which type_text does get.
+            // Changing the foreground window can be the entire point of a chord: Alt+Tab, Win+D,
+            // Ctrl+W on the last tab. Refusing when it moves would break plans that are working
+            // exactly as written, and the hazard checks still catch what actually matters, which is
+            // a consent prompt, an elevated window or a password field arriving mid-sequence.
+            if (await BlockedAsync(token).ConfigureAwait(false) is { } blocked)
+            {
+                return i == 0
+                    ? blocked
+                    : (blocked.Outcome, $"{blocked.Detail} Stopped after {i} of {repeat} repeats.");
+            }
+
+            await desktop.Input.SendChordAsync(action.Keys, token).ConfigureAwait(false);
+        }
 
         return (StepOutcome.Succeeded, $"Sent {string.Join("+", action.Keys)}.");
     }
@@ -215,14 +330,38 @@ public sealed partial class PlanExecutor
     private async Task<(StepOutcome, string)> TypeTextAsync(
         TypeTextAction action, RunState run, CancellationToken token)
     {
-        if (await BlockedAsync(token).ConfigureAwait(false) is { } blocked)
+        var text = run.Variables.Interpolate(action.Text);
+
+        if (await BlockedAsync(token).ConfigureAwait(false) is { } before)
         {
-            return blocked;
+            return before;
         }
 
-        await desktop.Input
-            .TypeTextAsync(run.Variables.Interpolate(action.Text), token)
-            .ConfigureAwait(false);
+        // The window the text is aimed at, recorded once the guard has approved it. Unlike a chord,
+        // typing never intends to change which window is in front, so a change partway through
+        // means the rest of the payload would land somewhere nobody chose.
+        var aimedAt = await desktop.Input.ForegroundWindowIdAsync(token).ConfigureAwait(false);
+
+        // Typed in chunks, with the guard re-run between them. A 2 000-character payload paces at 5
+        // ms per character, so the single check that used to guard the whole thing was ten seconds
+        // stale by the end of it.
+        for (var sent = 0; sent < text.Length; sent += TypingRecheckChars)
+        {
+            if (sent > 0
+                && await BlockedAsync(aimedAt, token).ConfigureAwait(false) is { } blocked)
+            {
+                // The count matters here in a way it does not elsewhere: those characters have
+                // already gone somewhere, and the user needs to know how many and go look.
+                return (blocked.Outcome,
+                    $"{blocked.Detail} Stopped after {sent} of {text.Length} characters, which have "
+                    + "already been typed.");
+            }
+
+            var take = Math.Min(TypingRecheckChars, text.Length - sent);
+            await desktop.Input
+                .TypeTextAsync(text.Substring(sent, take), token)
+                .ConfigureAwait(false);
+        }
 
         // Deliberately not logging the text. Safety control 6 — a plan may legitimately type
         // something the user would not want in a log they paste into a repair prompt.
@@ -238,13 +377,39 @@ public sealed partial class PlanExecutor
     /// simply go nowhere. Reporting it as a failure is the only way the user learns why an
     /// automation "worked" but nothing happened.
     /// </remarks>
-    private async Task<(StepOutcome, string)?> BlockedAsync(CancellationToken token)
+    private Task<(StepOutcome Outcome, string Detail)?> BlockedAsync(CancellationToken token) =>
+        BlockedAsync(0, token);
+
+    /// <summary>
+    /// The guard, optionally also requiring the foreground window not to have changed.
+    /// </summary>
+    /// <param name="expectedWindow">
+    /// The window this input was aimed at, or 0 to ask only about hazards. Non-zero on every check
+    /// after the first within one action, which is how a window that took focus partway through is
+    /// caught — the other hazards only recognise a *dangerous* new window, not a different one.
+    /// </param>
+    /// <param name="token">Cancellation, from the per-action deadline or the panic key.</param>
+    private async Task<(StepOutcome Outcome, string Detail)?> BlockedAsync(
+        long expectedWindow, CancellationToken token)
     {
         var hazard = await desktop.Input.CheckHazardAsync(token).ConfigureAwait(false);
+
+        if (hazard == InputHazard.None && expectedWindow != 0)
+        {
+            var now = await desktop.Input.ForegroundWindowIdAsync(token).ConfigureAwait(false);
+            if (now != expectedWindow)
+            {
+                hazard = InputHazard.FocusMoved;
+            }
+        }
 
         return hazard switch
         {
             InputHazard.None => null,
+
+            InputHazard.FocusMoved => (StepOutcome.Failed,
+                "A different window came to the front while this input was being sent, so the rest "
+                + "was not sent."),
 
             InputHazard.ConsentPrompt => (StepOutcome.Failed,
                 "Refused to send input: a Windows security prompt has focus."),
@@ -264,51 +429,63 @@ public sealed partial class PlanExecutor
     // ------------------------------- files -------------------------------
 
     private async Task<(StepOutcome, string)> ListAsync(
-        string path,
+        Resolved path,
         string into,
         RunState run,
         Func<string, ValueTask<IReadOnlyList<string>>> list,
         CancellationToken token)
     {
-        if (!pathGuard.IsAllowed(path, out var reason))
+        if (!pathGuard.IsAllowed(path.Value, path.Loggable, out var reason))
         {
             return (StepOutcome.Failed, $"Refused to read: {reason}");
         }
 
-        var found = await list(path).ConfigureAwait(false);
+        var found = await list(path.Value).ConfigureAwait(false);
         run.Variables.SetList(into, found);
 
-        return (StepOutcome.Succeeded, $"Found {found.Count} item(s) in {path}.");
+        // The items themselves are not listed, only counted. They are filesystem contents rather
+        // than plan text, and a folder's file names are the sort of thing PLAN.md item 7 is about.
+        return (StepOutcome.Succeeded, $"Found {found.Count} item(s) in {path.Loggable}.");
     }
 
     private async Task<(StepOutcome, string)> PathExistsAsync(
         PathExistsAction action, RunState run, CancellationToken token)
     {
-        var path = run.Variables.Interpolate(action.Path);
+        var path = Both(run, action.Path);
 
-        if (!pathGuard.IsAllowed(path, out var reason))
+        if (!pathGuard.IsAllowed(path.Value, path.Loggable, out var reason))
         {
             return (StepOutcome.Failed, $"Refused to check: {reason}");
         }
 
-        var exists = await desktop.Files.ExistsAsync(path, token).ConfigureAwait(false);
+        var exists = await desktop.Files.ExistsAsync(path.Value, token).ConfigureAwait(false);
         run.Variables.SetBoolean(action.Into, exists);
 
-        return (StepOutcome.Succeeded, $"{path} {(exists ? "exists" : "does not exist")}.");
+        return (StepOutcome.Succeeded, $"{path.Loggable} {(exists ? "exists" : "does not exist")}.");
     }
 
     private async Task<(StepOutcome, string)> OpenAsync(
         OpenPathAction action, RunState run, CancellationToken token)
     {
-        var path = run.Variables.Interpolate(action.Path);
+        var path = Both(run, action.Path);
 
-        if (!pathGuard.IsAllowed(path, out var reason))
+        if (!pathGuard.IsAllowed(path.Value, path.Loggable, out var reason))
         {
             return (StepOutcome.Failed, $"Refused to open: {reason}");
         }
 
-        await desktop.Files.OpenAsync(path, token).ConfigureAwait(false);
-        return (StepOutcome.Succeeded, $"Opened {path}.");
+        // The path guard answers "is this under an allowed root", and the default root is the
+        // user's profile — which includes Downloads and AppData\Local\Temp. That made open_path an
+        // unrestricted ShellExecute over every directory another process can drop a file into.
+        // Checked here rather than in the Windows layer so it holds against FakeDesktop too, and so
+        // one place decides.
+        if (!Core.Policy.ShellOpen.IsAllowed(path.Value, path.Loggable, out var refusal))
+        {
+            return (StepOutcome.Failed, $"Refused to open: {refusal}");
+        }
+
+        await desktop.Files.OpenAsync(path.Value, token).ConfigureAwait(false);
+        return (StepOutcome.Succeeded, $"Opened {path.Loggable}.");
     }
 
     // ------------------------------- clipboard & prompts -------------------------------
@@ -317,7 +494,10 @@ public sealed partial class PlanExecutor
         GetClipboardAction action, RunState run, CancellationToken token)
     {
         var text = await desktop.Clipboard.ReadAsync(token).ConfigureAwait(false);
-        run.Variables.SetText(action.Into, text);
+
+        // Marked as coming from outside the plan, so no log line can ever render it. Redacting it
+        // here and then interpolating it into abort.reason was the hole.
+        run.Variables.SetTextFromOutsideThePlan(action.Into, text);
 
         // Contents redacted — safety control 6.
         return (StepOutcome.Succeeded, $"Read {text.Length} character(s) from the clipboard.");
@@ -360,7 +540,9 @@ public sealed partial class PlanExecutor
             return (StepOutcome.Failed, "The user cancelled the prompt.");
         }
 
-        run.Variables.SetText(action.Into, answer);
+        // Same reasoning as the clipboard: a prompt answer is whatever the user typed, which
+        // may be a password, and the plan author never chose to write it down.
+        run.Variables.SetTextFromOutsideThePlan(action.Into, answer);
         return (StepOutcome.Succeeded, "Captured the user's input.");
     }
 

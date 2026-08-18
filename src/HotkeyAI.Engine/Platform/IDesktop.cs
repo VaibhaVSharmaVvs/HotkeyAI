@@ -36,11 +36,18 @@ public interface IDesktop
 /// <param name="Id">Opaque platform handle.</param>
 /// <param name="ProcessName">Owning process, without the extension.</param>
 /// <param name="Title">Current window title.</param>
-/// <param name="IsElevated">
-/// True if the window runs at a higher integrity level than this process. Synthetic input
-/// cannot reach it and fails <i>silently</i>, so this must be checked rather than discovered.
-/// </param>
-public readonly record struct WindowRef(long Id, string ProcessName, string Title, bool IsElevated);
+/// <remarks>
+/// There used to be an <c>IsElevated</c> here, and nothing in the repository ever read it — while
+/// computing it cost three syscalls for every visible window on every window search, including each
+/// 150 ms poll of a <c>wait_for_window</c>.
+/// <para>
+/// Its absence is not a gap. The integrity check that matters is
+/// <c>IInput.CheckHazardAsync</c>, which asks about the window that is actually about to receive
+/// input, at the moment it is about to receive it — a field on a record fetched earlier would be a
+/// weaker answer to a question that is only ever asked about the foreground.
+/// </para>
+/// </remarks>
+public readonly record struct WindowRef(long Id, string ProcessName, string Title);
 
 /// <summary>Why sending synthetic input right now would be unsafe.</summary>
 public enum InputHazard
@@ -56,12 +63,42 @@ public enum InputHazard
 
     /// <summary>Foreground runs elevated, so input would silently go nowhere.</summary>
     ElevatedWindow,
+
+    /// <summary>
+    /// The window that was going to receive this input is no longer the one in front.
+    /// </summary>
+    /// <remarks>
+    /// The hazard check used to happen once per action, and a 2 000-character <c>type_text</c>
+    /// occupies the foreground for ten seconds afterwards. Anything that takes focus in that window
+    /// receives the remainder — a UAC prompt appearing, the user alt-tabbing to their password
+    /// manager. The other hazards catch a *dangerous* new window; this catches a merely different
+    /// one, which is the case Windows will happily accept.
+    /// </remarks>
+    FocusMoved,
+}
+
+/// <summary>
+/// What resolving a logical app name produced.
+/// </summary>
+/// <param name="Path">The executable, or null when there is nothing to launch.</param>
+/// <param name="Refusal">
+/// Why a resolved executable was rejected, or null. Separate from "not installed" because the two
+/// need different words: one is a missing application, the other is an application found somewhere
+/// it should not be — which is a warning, not an absence.
+/// </param>
+public readonly record struct AppResolution(string? Path, string? Refusal)
+{
+    public static AppResolution None => new(null, null);
+
+    public static AppResolution At(string path) => new(path, null);
+
+    public static AppResolution Refused(string why) => new(null, why);
 }
 
 public interface IProcesses
 {
-    /// <summary>Resolve a logical app name to an executable, or null if not installed.</summary>
-    ValueTask<string?> ResolveAsync(string logicalName, CancellationToken cancellationToken);
+    /// <summary>Resolve a logical app name to an executable.</summary>
+    ValueTask<AppResolution> ResolveAsync(string logicalName, CancellationToken cancellationToken);
 
     ValueTask LaunchAsync(
         string executablePath,
@@ -71,7 +108,17 @@ public interface IProcesses
 
     ValueTask<bool> IsRunningAsync(string processName, CancellationToken cancellationToken);
 
-    ValueTask TerminateAsync(string processName, bool force, CancellationToken cancellationToken);
+    /// <summary>How many processes carry this name.</summary>
+    /// <remarks>
+    /// Asked before the confirmation prompt. It used to say "Close chrome?" while the terminate
+    /// killed every process of that name — and on a browser or an editor that is routinely a dozen
+    /// of them. A prompt that understates what it is about to do is worse than no prompt, because
+    /// the user learns to trust it.
+    /// </remarks>
+    ValueTask<int> CountAsync(string processName, CancellationToken cancellationToken);
+
+    /// <summary>Terminate every process of this name, returning how many were acted on.</summary>
+    ValueTask<int> TerminateAsync(string processName, bool force, CancellationToken cancellationToken);
 }
 
 public interface IWindows
@@ -100,9 +147,35 @@ public interface IInput
     /// <summary>Whether synthetic input can safely be sent to the foreground window.</summary>
     ValueTask<InputHazard> CheckHazardAsync(CancellationToken cancellationToken);
 
-    ValueTask SendChordAsync(
-        IReadOnlyList<KeyName> keys, int repeat, CancellationToken cancellationToken);
+    /// <summary>
+    /// An opaque identity for whichever window would receive input right now, or 0 for none.
+    /// </summary>
+    /// <remarks>
+    /// Only ever compared, never interpreted — the executor captures it before a long piece of
+    /// input and checks it has not changed partway through. A process name would be the cheaper
+    /// signal and the wrong one: typing a password into the wrong document of the right
+    /// application is exactly the mistake worth catching.
+    /// </remarks>
+    ValueTask<long> ForegroundWindowIdAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Send one chord.
+    /// </summary>
+    /// <remarks>
+    /// One, not <c>repeat</c> of them. The repeat loop lives in the executor so the
+    /// sensitive-window guard is re-run between iterations. A loop down here is a loop the safety
+    /// controls cannot see into.
+    /// </remarks>
+    ValueTask SendChordAsync(IReadOnlyList<KeyName> keys, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Type a run of text, one character at a time.
+    /// </summary>
+    /// <remarks>
+    /// The executor calls this in short chunks rather than handing over a whole payload, for the
+    /// reason above: typing paces at 5 ms per character, so a long string is many seconds during
+    /// which nothing is checking where the characters are going.
+    /// </remarks>
     ValueTask TypeTextAsync(string text, CancellationToken cancellationToken);
 
     ValueTask SendAppCommandAsync(AppCommand command, CancellationToken cancellationToken);

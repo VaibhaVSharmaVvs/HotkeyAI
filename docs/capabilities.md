@@ -186,7 +186,7 @@ Open a file or folder with whatever application Windows associates with it, as i
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `path` | `string` | yes | File or folder to open. Must sit under a configured allowed root. |
+| `path` | `string` | yes | File or folder to open with whatever application is associated with it. Must sit under a configured allowed root. Refused for anything Windows executes rather than opens — .exe .com .bat .cmd .ps1 .vbs .js .lnk .url .hta .msi .reg .scr .cpl and the rest — because this hands the path to the shell, which would run it. To start a program, use launch_process with a logical 'app' name. Note that an allowed root can contain files this plan did not put there: opening every file a folder happens to hold is a plan whose behaviour is decided by whoever last wrote to it. |
 
 ## Clipboard
 

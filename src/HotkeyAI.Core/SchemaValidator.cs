@@ -150,9 +150,34 @@ public static class SchemaValidator
             .Select(e => e.Path)
             .ToList();
 
-        return [.. deduped
+        var surviving = deduped
             .Where(e => !IsRollUp(e)
                         || !specific.Any(p => p.StartsWith(e.Path + "/", StringComparison.Ordinal)))
+            .ToList();
+
+        // Nothing specific anywhere, only roll-ups. This used to report three messages, none of
+        // which mentioned nesting — and nesting is the only way it can happen. Every action is
+        // validated against the branch it declares, so an action that is itself well-formed and
+        // still rejected was rejected for *where it is*: the third control-flow level, which the
+        // schema deliberately does not offer. Saying "some properties did not match" three times
+        // describes the evaluator's search, not the user's mistake.
+        if (surviving.Count > 0 && surviving.TrueForAll(IsRollUp))
+        {
+            var deepest = surviving
+                .OrderByDescending(e => e.Path.Length)
+                .First();
+
+            return [new ValidationError(
+                ValidationLayer.Schema,
+                deepest.Path,
+                "No action is allowed here. Actions nest three levels: an if or foreach may "
+                + "contain one more if or foreach, and that inner one may contain leaf actions "
+                + "only. The limit is deliberate — it keeps a plan statically analysable — so "
+                + "restructure rather than nest deeper, usually by moving the inner condition "
+                + "into the outer one.")];
+        }
+
+        return [.. surviving
             .OrderBy(e => e.Path.Length)
             .ThenBy(e => e.Path, StringComparer.Ordinal)];
     }
@@ -196,15 +221,43 @@ public static class SchemaValidator
 
         var nested = NestedKeys(declared);
 
-        return raw
+        var mine = raw
             // Errors inside a nested action belong to that action's own pass.
             .Where(e => !nested.Any(k =>
                 e.InstancePath.StartsWith($"/{k}/", StringComparison.Ordinal)))
-            .Select(e => new ValidationError(
+            .ToList();
+
+        // An unknown field produces two errors: additionalProperties on the object, and the
+        // `false` subschema on the offending property itself — whose message, "All values fail
+        // against the false schema", is evaluator vocabulary that means nothing to anyone.
+        // Collapsed into one error at the precise pointer,
+        // which is the only version that both names the field and can be acted on.
+        var unknown = mine
+            .Where(e => IsFalseSchema(e) && e.InstancePath.Length > 1)
+            .Select(e => e.InstancePath)
+            .ToList();
+
+        if (unknown.Count > 0)
+        {
+            return unknown.Select(pointer => new ValidationError(
                 ValidationLayer.Schema,
-                path + e.InstancePath,
-                Describe(e.Keyword, e.Message)));
+                path + pointer,
+                $"\"{pointer.TrimStart('/')}\" is not a field on {declared}. Unknown fields are "
+                + "always rejected — check the action's parameter list in docs/capabilities.md."));
+        }
+
+        return mine.Select(e => new ValidationError(
+            ValidationLayer.Schema,
+            path + e.InstancePath,
+            Describe(e.Keyword, e.Message)));
     }
+
+    /// <summary>
+    /// The <c>false</c> subschema that <c>additionalProperties: false</c> produces on the offending
+    /// property. Recognised by its message because the evaluator reports no keyword for it.
+    /// </summary>
+    private static bool IsFalseSchema(RawError error) =>
+        error.Message.Contains("false schema", StringComparison.Ordinal);
 
     /// <summary>Properties of an action that hold other actions.</summary>
     private static string[] NestedKeys(string discriminator) => discriminator switch

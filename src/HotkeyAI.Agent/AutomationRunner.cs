@@ -129,7 +129,19 @@ internal sealed class AutomationRunner(
 
         try
         {
-            var result = await executor.RunAsync(plan, observer, run.Token).ConfigureAwait(false);
+            // Which of the two stopped it is knowable here and nowhere else: `stop` is the caller's
+            // (a dashboard or test-run Stop button), and `run` cancelled without it is the panic
+            // key. The transcript used to blame the panic key either way, and it is what gets
+            // pasted into a repair prompt.
+            var result = await executor
+                .RunAsync(
+                    plan,
+                    observer,
+                    () => stop.IsCancellationRequested
+                        ? "Stopped by the Stop button."
+                        : "Stopped by the panic key.",
+                    run.Token)
+                .ConfigureAwait(false);
             var transcript = result.ToTranscript();
 
             AgentLog.Raw(transcript);

@@ -66,7 +66,7 @@ public sealed class WindowsInput : IInput
             return ValueTask.FromResult(InputHazard.CredentialPrompt);
         }
 
-        Native.GetWindowThreadProcessId(window, out var processId);
+        var thread = Native.GetWindowThreadProcessId(window, out var processId);
 
         if (Integrity.IsHigherThanUs(processId))
         {
@@ -76,42 +76,113 @@ public sealed class WindowsInput : IInput
             return ValueTask.FromResult(InputHazard.ElevatedWindow);
         }
 
+        if (FocusIsMasked(thread))
+        {
+            return ValueTask.FromResult(InputHazard.CredentialPrompt);
+        }
+
         return ValueTask.FromResult(InputHazard.None);
     }
 
+    /// <summary>Edit-control classes whose password style is worth reading.</summary>
+    /// <remarks>
+    /// The style bit is only <c>ES_PASSWORD</c> on an edit control; <c>0x0020</c> means something
+    /// else entirely on a button or a list box, so the class has to be established first or the
+    /// check invents password fields where there are none.
+    /// </remarks>
+    private static readonly HashSet<string> EditClasses =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Edit", "RichEdit", "RichEdit20A", "RichEdit20W", "RichEdit50W", "RICHEDIT60W",
+        };
+
+    /// <summary>
+    /// Whether a window class is an edit control, superclassed or not.
+    /// </summary>
+    /// <remarks>
+    /// The second half matters more than the first. A WinForms <c>TextBox</c> is a real edit
+    /// control with the real <c>ES_PASSWORD</c> style, but WinForms superclasses it and the class
+    /// name comes back as <c>WindowsForms10.EDIT.app.0.1405e41_r25_ad1</c> — so an exact-match list
+    /// finds a plain Win32 dialog's password box and misses every managed one, which is most of
+    /// them. This was found by probing a live masked TextBox rather than by reading, and it is the
+    /// reason the probe was worth writing.
+    /// </remarks>
+    internal static bool IsEditControl(string className) =>
+        EditClasses.Contains(className)
+        || (className.StartsWith("WindowsForms", StringComparison.OrdinalIgnoreCase)
+            && className.Split('.') is [_, var control, ..]
+            && EditClasses.Contains(control));
+
+    /// <summary>
+    /// Whether the focused control masks what is typed into it.
+    /// </summary>
+    /// <remarks>
+    /// PLAN.md control 3 once claimed a password-style check that did not exist: the code tested
+    /// two window class names and the integrity level, so the foreground being a credential
+    /// *dialog* was caught while a password *field* inside an ordinary window was not.
+    /// <para>
+    /// The foreground window is not what receives typing — the focused child control is — so this
+    /// asks the foreground thread which control has the focus and reads its style. That covers
+    /// Win32 and WinForms. It does not cover WPF, Chromium or Electron, where the focused element
+    /// is not a window at all and only UI Automation can see it; PLAN.md control 3 now says so
+    /// rather than implying otherwise, because a control described more broadly than it is
+    /// implemented is worse than a narrow one honestly described.
+    /// </para>
+    /// </remarks>
+    private static bool FocusIsMasked(uint foregroundThread)
+    {
+        var info = new Native.GuiThreadInfo();
+        info.Size = Marshal.SizeOf<Native.GuiThreadInfo>();
+
+        if (!Native.GetGUIThreadInfo(foregroundThread, ref info) || info.Focus == 0)
+        {
+            // No focused control, or a thread that will not answer — which is the ordinary case for
+            // a Chromium window. Not a hazard on its own: reporting one here would refuse input to
+            // every browser.
+            return false;
+        }
+
+        if (!IsEditControl(Native.GetWindowClass(info.Focus)))
+        {
+            return false;
+        }
+
+        return ((int)Native.GetWindowLongPtr(info.Focus, Native.GWL_STYLE) & Native.ES_PASSWORD) != 0;
+    }
+
+    public ValueTask<long> ForegroundWindowIdAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult((long)Native.GetForegroundWindow());
+
     public ValueTask SendChordAsync(
-        IReadOnlyList<KeyName> keys, int repeat, CancellationToken cancellationToken)
+        IReadOnlyList<KeyName> keys, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(keys);
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         var modifiers = keys.Where(Keys.IsModifier).Select(Code).ToList();
         var main = keys.Where(k => !Keys.IsModifier(k)).Select(Code).ToList();
 
-        for (var i = 0; i < Math.Max(1, repeat); i++)
+        var sequence = new List<Native.Input>();
+
+        foreach (var modifier in modifiers)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var sequence = new List<Native.Input>();
-
-            foreach (var modifier in modifiers)
-            {
-                sequence.Add(Key(modifier, down: true));
-            }
-
-            foreach (var key in main)
-            {
-                sequence.Add(Key(key, down: true));
-                sequence.Add(Key(key, down: false));
-            }
-
-            // Released in reverse, mirroring how a person lets go of a chord.
-            for (var m = modifiers.Count - 1; m >= 0; m--)
-            {
-                sequence.Add(Key(modifiers[m], down: false));
-            }
-
-            Send(sequence);
+            sequence.Add(Key(modifier, down: true));
         }
+
+        foreach (var key in main)
+        {
+            sequence.Add(Key(key, down: true));
+            sequence.Add(Key(key, down: false));
+        }
+
+        // Released in reverse, mirroring how a person lets go of a chord.
+        for (var m = modifiers.Count - 1; m >= 0; m--)
+        {
+            sequence.Add(Key(modifiers[m], down: false));
+        }
+
+        Send(sequence);
 
         return ValueTask.CompletedTask;
     }

@@ -45,6 +45,16 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
 
     public InputHazard Hazard { get; set; } = InputHazard.None;
 
+    /// <summary>How many times the sensitive-window guard has been consulted.</summary>
+    /// <remarks>
+    /// Counted so a test can assert the guard runs *during* a long piece of input and not only
+    /// before it.
+    /// </remarks>
+    public int HazardChecks { get; private set; }
+
+    /// <summary>Which window would receive input. Change it mid-run to simulate focus moving.</summary>
+    public long ForegroundWindowId { get; set; } = 1;
+
     /// <summary>What the picker returns. Null simulates the user cancelling.</summary>
     public string? PickerChoice { get; set; }
 
@@ -69,8 +79,10 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
 
     // ------------------------------- processes -------------------------------
 
-    public ValueTask<string?> ResolveAsync(string logicalName, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(InstalledApps.GetValueOrDefault(logicalName));
+    public ValueTask<AppResolution> ResolveAsync(string logicalName, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(InstalledApps.GetValueOrDefault(logicalName) is { } path
+            ? AppResolution.At(path)
+            : AppResolution.None);
 
     public async ValueTask LaunchAsync(
         string executablePath,
@@ -104,14 +116,50 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
         }
     }
 
-    public ValueTask<bool> IsRunningAsync(string processName, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(RunningProcesses.Contains(processName));
+    /// <summary>
+    /// Set to make the process check throw, simulating the desktop layer failing outright.
+    /// </summary>
+    /// <remarks>
+    /// A hook here rather than on <c>OnEffect</c> because it has to fire somewhere the executor's
+    /// per-action catch cannot see: an exception from a dispatch is reported as one failed step, by
+    /// design, and never reaches the run-level handler this is about. Verification runs outside
+    /// that guard, so a postcondition asking about a process is the
+    /// shortest honest route to it.
+    /// </remarks>
+    public Exception? ProcessCheckThrows { get; set; }
 
-    public async ValueTask TerminateAsync(
+    public ValueTask<bool> IsRunningAsync(string processName, CancellationToken cancellationToken) =>
+        ProcessCheckThrows is { } boom
+            ? throw boom
+            : ValueTask.FromResult(RunningProcesses.Contains(processName));
+
+    /// <summary>
+    /// How many processes a name stands for. One unless a test says otherwise.
+    /// </summary>
+    /// <remarks>
+    /// The confirmation prompt used to say "Close chrome?" while the
+    /// terminate killed every process of that name. Testing the corrected prompt needs a fake that
+    /// can have more than one.
+    /// </remarks>
+    public Dictionary<string, int> ProcessCounts { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public ValueTask<int> CountAsync(string processName, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            ProcessCounts.TryGetValue(processName, out var many)
+                ? many
+                : RunningProcesses.Contains(processName) ? 1 : 0);
+
+    public async ValueTask<int> TerminateAsync(
         string processName, bool force, CancellationToken cancellationToken)
     {
         await RecordAsync($"terminate:{processName}:{force}").ConfigureAwait(false);
+
+        var closed = await CountAsync(processName, cancellationToken).ConfigureAwait(false);
+
         RunningProcesses.Remove(processName);
+        ProcessCounts.Remove(processName);
+
+        return closed;
     }
 
     // ------------------------------- windows -------------------------------
@@ -155,12 +203,18 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
 
     // ------------------------------- input -------------------------------
 
-    public ValueTask<InputHazard> CheckHazardAsync(CancellationToken cancellationToken) =>
-        ValueTask.FromResult(Hazard);
+    public ValueTask<InputHazard> CheckHazardAsync(CancellationToken cancellationToken)
+    {
+        HazardChecks++;
+        return ValueTask.FromResult(Hazard);
+    }
+
+    public ValueTask<long> ForegroundWindowIdAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(ForegroundWindowId);
 
     public ValueTask SendChordAsync(
-        IReadOnlyList<KeyName> keys, int repeat, CancellationToken cancellationToken) =>
-        RecordAsync($"keys:{string.Join('+', keys)}x{repeat}");
+        IReadOnlyList<KeyName> keys, CancellationToken cancellationToken) =>
+        RecordAsync($"keys:{string.Join('+', keys)}");
 
     public ValueTask TypeTextAsync(string text, CancellationToken cancellationToken) =>
         RecordAsync($"type:{text}");
@@ -228,8 +282,22 @@ internal sealed class FakeDesktop : IDesktop, IProcesses, IWindows, IInput, IFil
         string message, NotifyLevel level, CancellationToken cancellationToken) =>
         RecordAsync($"notify:{level}:{message}");
 
+    /// <summary>The last question the user was asked, or null if they were never asked.</summary>
+    /// <remarks>
+    /// Kept separately from <see cref="Effects"/> because the wording is the thing under test for
+    /// these tests, and picking it back out of an effect string would mean the test asserting on a
+    /// prefix it does not care about.
+    /// </remarks>
+    public string? ConfirmQuestion { get; private set; }
+
+    /// <summary>Called for each confirmation, so a test can count them.</summary>
+    public Action<string>? OnConfirm { get; set; }
+
     public async ValueTask<bool> ConfirmAsync(string message, CancellationToken cancellationToken)
     {
+        ConfirmQuestion = message;
+        OnConfirm?.Invoke(message);
+
         await RecordAsync($"confirm:{message}").ConfigureAwait(false);
         return ConfirmAnswer;
     }

@@ -25,6 +25,16 @@ public static class PlanValidator
             return structural;
         }
 
+        // Before deserialising, not after. A number too large for int32 used to throw during
+        // deserialisation and be reported as "a defect in Hotkey AI, not in the plan" — blaming the
+        // tool for something the plan did, because the schema's "integer" carries no range and
+        // nothing else looked. Checked here so the answer is a
+        // JSON Pointer at the offending number rather than an STJ message about System.Int32.
+        if (OutOfRangeNumbers(json) is { Count: > 0 } tooBig)
+        {
+            return new ValidationResult(tooBig);
+        }
+
         Automation? automation;
         try
         {
@@ -38,8 +48,8 @@ public static class PlanValidator
                 new ValidationError(
                     ValidationLayer.Schema,
                     "",
-                    $"Passed schema validation but could not be read into the object model: "
-                    + $"{ex.Message}. This is a defect in Hotkey AI, not in the plan."),
+                    "Passed schema validation but could not be read into the object model: "
+                    + $"{ex.Message} This is a defect in Hotkey AI, not in the plan."),
             ]);
         }
 
@@ -53,4 +63,72 @@ public static class PlanValidator
     /// <summary>Validate an already-parsed plan. Policy layer only.</summary>
     public static ValidationResult Validate(Automation automation, PolicyOptions? options = null) =>
         PolicyValidator.Validate(automation, options);
+
+    /// <summary>
+    /// Every number in the document that will not fit the <c>int</c> the DSL uses.
+    /// </summary>
+    /// <remarks>
+    /// A walk of the document rather than a reading of the exception, because the exception is a
+    /// .NET implementation detail and the pointer is what the user needs. Every numeric in the
+    /// schema is an <c>integer</c> mapped to <c>int</c> — there are twelve of them and no floats —
+    /// so "does it fit an int" is the whole question, and asking it here means the answer arrives
+    /// alongside the other policy errors instead of replacing them.
+    /// </remarks>
+    private static List<ValidationError> OutOfRangeNumbers(string json)
+    {
+        var errors = new List<ValidationError>();
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            Walk(document.RootElement, "", errors);
+        }
+        catch (JsonException)
+        {
+            // Unparseable JSON is the schema layer's business, and it already ran.
+        }
+
+        return errors;
+
+        static void Walk(JsonElement element, string pointer, List<ValidationError> errors)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var property in element.EnumerateObject())
+                    {
+                        Walk(property.Value, $"{pointer}/{Escape(property.Name)}", errors);
+                    }
+
+                    break;
+
+                case JsonValueKind.Array:
+                    var index = 0;
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        Walk(item, $"{pointer}/{index++}", errors);
+                    }
+
+                    break;
+
+                case JsonValueKind.Number when !element.TryGetInt32(out _):
+                    errors.Add(new ValidationError(
+                        ValidationLayer.Policy,
+                        pointer,
+                        $"{element.GetRawText()} is not a whole number between "
+                        + $"{int.MinValue} and {int.MaxValue}. Every number in the DSL is a "
+                        + "32-bit integer; check the property's own bounds in "
+                        + "docs/capabilities.md, which are narrower still."));
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        // RFC 6901: "~" and "/" are the two characters a pointer token has to escape.
+        static string Escape(string name) =>
+            name.Replace("~", "~0", StringComparison.Ordinal)
+                .Replace("/", "~1", StringComparison.Ordinal);
+    }
 }

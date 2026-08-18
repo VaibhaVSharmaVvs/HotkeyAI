@@ -424,23 +424,80 @@ V1 requirements, not polish. Each prevents a specific failure I can name.
 2. **Validator is an allowlist, not a blocklist.** Unknown action `type` → reject. Unknown
    field → reject. `launch_process` must use `resolve` against the app registry or an absolute
    path under a configured allowed root. No shell primitive exists to abuse.
-3. **Sensitive-window guard.** Before any `send_keys` / `type_text`, check the foreground
-   window: refuse if it is a UAC consent dialog, a credential prompt, or a control with the
-   password style. Detect and report integrity mismatch rather than failing silently.
+
+   `open_path` is the other way to reach the shell, and being under an allowed root is not enough
+   on its own: the default root is the user's profile, which contains `Downloads` and
+   `AppData\Local\Temp` — directories another process can write to. It refuses anything Windows
+   *executes* rather than opens (`.exe .bat .ps1 .lnk .url .hta .msi .reg .scr .cpl` and the
+   rest), at validation for a literal path and at execution for an interpolated one, since only
+   the second can be checked when the path comes from a variable.
+3. **Sensitive-window guard.** Before *and throughout* any `send_keys` / `type_text`, check the
+   foreground window: refuse if it is a UAC consent dialog, a credential prompt, or a focused
+   edit control carrying the `ES_PASSWORD` style. Detect and report integrity mismatch rather
+   than failing silently.
+
+   Throughout, because typing paces at 5 ms per character and `repeat` reaches 50 — one check
+   before a long payload is stale long before the payload ends. The executor owns both loops and
+   re-checks every 32 characters and between every repeat. `type_text` additionally refuses if
+   the foreground window merely *changed*, since typing never intends to move focus; `send_keys`
+   does not, because a chord often does — Alt+Tab, Win+D, Ctrl+W on the last tab.
+
+   The password-style check reads the focused control's style through `GetGUIThreadInfo`, so it
+   covers Win32 and WinForms — superclassed classes included. It does **not** cover WPF,
+   Chromium or Electron password inputs, where the focused element is not a window at all and
+   only UI Automation can see it; UIA would mean a framework reference this project deliberately
+   avoids, and a cross-process call on the hotkey path. Stated here rather than left implied,
+   because a control described more broadly than it is implemented is worse than a narrow one
+   honestly described.
 4. **Trust-on-first-use for automation files.** Store under `%LOCALAPPDATA%` with a per-user
    ACL and HMAC each file with a key in DPAPI. An unsigned or changed file is **loaded
    disabled and marked unverified**, never refused outright, and never run until the user has
    seen the rendered plan and approved it — at which point it's signed. This is the resolution
    of the conflict in challenge 2: it keeps malware from getting silent code execution while
    making hand-authored files a first-class input.
-5. **Confirmation on destructive actions.** `terminate_process` and `close_process` prompt on
-   first use per automation, remembered thereafter.
+
+   The ACL is set rather than inherited. `%LOCALAPPDATA%` does inherit a reasonable one — SYSTEM,
+   Administrators and the user — so this control held by accident before, which is the kind that
+   nobody notices going away. A new store is created with
+   a protected DACL granting only this user and SYSTEM; an existing one is left alone, because
+   overruling whatever the user or their IT department configured risks locking someone out of
+   their own automations. Either way the agent audits it at startup and `hotkeyai list` warns if
+   anyone else can reach the folder — automations there run on a keypress, so write access is the
+   ability to change what someone's own hotkeys do. Administrators are exempt from the warning:
+   they can take ownership regardless, and reporting them would be noise on every machine.
+5. **Confirmation on destructive actions.** `terminate_process` prompts **every run**, not once
+   per automation, and the prompt says how many processes match and whether child processes go
+   with them.
+
+   Stricter than this control originally read ("prompt on first use, remembered thereafter"), and
+   deliberately so: the user is approving *this* kill, with whatever unsaved work is currently
+   open, rather than the idea of killing things — and a remembered yes is a yes given to a
+   different desktop. The review's counter-point is real, though, so the prompt does not fire when
+   nothing matches: a prompt that appears when there is nothing to close is exactly how the reflex
+   to click through gets trained.
 6. **Never log secrets.** Execution logs record action ids and outcomes, and redact
    `type_text` payloads and clipboard content by default. This matters more in V1 than V2 —
    you will be pasting logs into a repair prompt by hand.
+
+   Enforced by provenance, not by pattern-matching the value: a variable written by
+   `get_clipboard` or `show_input` is marked as coming from outside the plan, and `abort.reason`
+   — the one field whose interpolated text becomes a log line — renders it as
+   `[name redacted]`. Redacting the two sources and then interpolating one of them into a step
+   detail was the hole. Window titles and picked paths
+   are still logged; that is a deliberate limit, and item 7's retention question covers it.
 7. **No egress in V1.** Nothing leaves the machine; the authoring bridge is filesystem and a
    local pipe. Before V2's API mode ships, add path/title redaction at the boundary — prompts
    and repair bundles will otherwise carry file paths and window titles.
+
+   Retention is implemented, redaction is not, and the split is deliberate. Logs are pruned after
+   14 days and a runaway day rolls at 8 MB instead of growing without limit — two weeks covers
+   both reasons anyone opens a log, and nothing older
+   has a reader. What is still logged in clear is window titles and picked paths. Redacting those
+   would gut the log's only purpose, which is telling someone why an automation did the wrong
+   thing; the answer is the boundary redaction above, at the point where the data would leave the
+   machine, not at the point where it is written for the person sitting at it. Secrets are a
+   different question and already handled: nothing from the clipboard or a prompt reaches a log
+   line at all (control 6).
 
 If this is ever shared with colleagues at Solulever, re-open items 4, 6 and 7 plus code
 signing and a Scrut.io control mapping before distribution — window titles and file paths in

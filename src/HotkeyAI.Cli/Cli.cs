@@ -234,8 +234,12 @@ public static class Cli
                 : (IPrompts)new ConsolePrompts();
 
             var desktop = new WindowsDesktop(prompts);
-            var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots));
-            var result = await executor.RunAsync(automation, panic.Token).ConfigureAwait(false);
+            var executor = new PlanExecutor(desktop, new PathGuard(policy.AllowedRoots, new WindowsRealPath()));
+            // Ctrl+C here, not the panic key — this is a console run, and saying "panic key" would
+            // describe a keypress that is not even registered.
+            var result = await executor
+                .RunAsync(automation, null, () => "Stopped by Ctrl+C.", panic.Token)
+                .ConfigureAwait(false);
 
             Console.WriteLine(new string('-', 60));
             Console.Write(result.ToTranscript());

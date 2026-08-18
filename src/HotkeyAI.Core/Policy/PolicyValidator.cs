@@ -51,6 +51,9 @@ public static partial class PolicyValidator
             CheckBounds(path, action, options, errors);
             CheckLaunch(path, action, options, errors);
             CheckChord(path, action, errors);
+            CheckSelectors(path, action, options, errors);
+            CheckOpen(path, action, errors);
+            CheckPaths(path, action, options, errors);
         }
 
         CheckDataflow(automation, all, errors);
@@ -92,6 +95,20 @@ public static partial class PolicyValidator
         PolicyOptions options,
         List<ValidationError> errors)
     {
+        if (all.Count == 0)
+        {
+            // An empty plan used to validate, be approvable, and bind a global chord that did
+            // nothing — and a chord is process-wide and first-come-first-served, so it also took
+            // that combination away from whatever else on the machine wanted it. Refused rather
+            // than warned because there is no ValidationResult severity below "error", and a plan
+            // with no actions is a mistake in every case: nobody writes one on purpose, and the
+            // honest reading of one is an edit that went wrong.
+            errors.Add(Error(
+                "/actions",
+                "This plan has no actions, so its hotkey would do nothing while still claiming "
+                + "the key combination system-wide. Add at least one action, or delete the plan."));
+        }
+
         if (all.Count > options.MaxActions)
         {
             errors.Add(Error(
@@ -242,6 +259,152 @@ public static partial class PolicyValidator
         }
     }
 
+    /// <summary>
+    /// Check every literal path in an action, not just the one on <c>launch_process</c>.
+    /// </summary>
+    /// <remarks>
+    /// This used to cover <c>launch_process.path</c> alone. Out-of-root literals on
+    /// <c>open_path</c>, <c>list_files</c>, <c>list_directories</c>, <c>path_exists</c>,
+    /// <c>workingDirectory</c> and <c>expect.path_exists</c> validated clean and failed only at run
+    /// time — a plan the user could approve and that could never work. The runtime guard held, so
+    /// this is honesty rather than a hole, and the honesty matters most on the approval screen:
+    /// someone reading a preview is being asked whether to trust a plan, and "this cannot run" is
+    /// something they should learn then rather than on the keypress.
+    /// <para>
+    /// Only when roots are configured. With none, the run-time guard refuses every path anyway, and
+    /// a validator that rejected every literal under <see cref="PolicyOptions.Default"/> would be
+    /// useless for authoring — the question "is this under an allowed root" has no answer worth
+    /// giving when there are no roots to be under.
+    /// </para>
+    /// <para>
+    /// <c>launch_process.path</c> keeps its own stricter treatment in <see cref="CheckLaunch"/>: it
+    /// refuses an interpolated path outright, because launching is the one operation where a value
+    /// that cannot be checked before the plan runs is worth refusing rather than re-checking.
+    /// </para>
+    /// </remarks>
+    private static void CheckPaths(
+        string path, HotkeyAction action, PolicyOptions options, List<ValidationError> errors)
+    {
+        foreach (var (pointer, literal) in Paths(action, path))
+        {
+            // launch_process.path is CheckLaunch's, and reporting it twice in different words would
+            // be worse than not reporting it here at all.
+            if (action is LaunchProcessAction && pointer == path + "/path")
+            {
+                continue;
+            }
+
+            // Interpolated: nothing to check statically, and the executor re-checks the resolved
+            // value against the same roots before touching it.
+            if (literal.Length == 0 || literal.Contains("${", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!WindowsPath.IsAbsolute(literal))
+            {
+                errors.Add(Error(
+                    pointer,
+                    $"\"{literal}\" is not an absolute Windows path. A relative path has nothing "
+                    + "to be relative to — an automation runs from wherever the agent happens to "
+                    + "be — so it can never resolve."));
+                continue;
+            }
+
+            if (options.AllowedRoots.Count > 0
+                && !options.AllowedRoots.Any(root => WindowsPath.IsUnder(literal, root)))
+            {
+                errors.Add(Error(
+                    pointer,
+                    $"\"{literal}\" is not under an allowed root ("
+                    + string.Join(", ", options.AllowedRoots)
+                    + "). The engine would refuse this at run time, so the plan could be approved "
+                    + "and still never work."));
+            }
+        }
+    }
+
+    /// <summary>Every filesystem path an action carries, with the pointer that reaches it.</summary>
+    /// <remarks>
+    /// Found by JSON name — <c>path</c> and <c>workingDirectory</c> — rather than by naming the
+    /// records, for the reason the rest of this file gives: a primitive added later is covered
+    /// without anyone remembering to come back here. There is no field called <c>path</c> in the
+    /// DSL that is not a filesystem path, and a postcondition or predicate carrying one is reached
+    /// through the same walk.
+    /// </remarks>
+    private static IEnumerable<(string Path, string Literal)> Paths(object value, string path)
+    {
+        if (value is IEnumerable<Condition> conditions)
+        {
+            var index = 0;
+            foreach (var condition in conditions)
+            {
+                foreach (var found in Paths(condition, $"{path}/{index++}"))
+                {
+                    yield return found;
+                }
+            }
+
+            yield break;
+        }
+
+        if (value is not (HotkeyAction or Postcondition or Condition))
+        {
+            yield break;
+        }
+
+        foreach (var property in value.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0))
+        {
+            if (SafeRead(property, value) is not { } inner || inner is IEnumerable<HotkeyAction>)
+            {
+                continue;
+            }
+
+            var name = JsonName(property);
+
+            if (inner is string literal)
+            {
+                if (name is "path" or "workingDirectory")
+                {
+                    yield return ($"{path}/{name}", literal);
+                }
+
+                continue;
+            }
+
+            foreach (var found in Paths(inner, $"{path}/{name}"))
+            {
+                yield return found;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Refuse an <c>open_path</c> whose literal path is something Windows executes.
+    /// </summary>
+    /// <remarks>
+    /// The executor refuses it too, and has to — a path built from a variable is only known at run
+    /// time, which is the amplifying shape that matters: <c>list_files</c> over a folder anyone can
+    /// write to, then <c>foreach</c> → <c>open_path</c>. This half is about the other failure mode:
+    /// a plan naming an <c>.exe</c> outright used to validate clean and be approvable, so the
+    /// user's yes was given to something that could never have been allowed to run.
+    /// </remarks>
+    private static void CheckOpen(string path, HotkeyAction action, List<ValidationError> errors)
+    {
+        if (action is not OpenPathAction open
+            || open.Path.Contains("${", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!ShellOpen.IsAllowed(open.Path, out var reason))
+        {
+            errors.Add(Error(path + "/path", reason));
+        }
+    }
+
     private static void CheckChord(string path, HotkeyAction action, List<ValidationError> errors)
     {
         if (action is not SendKeysAction send)
@@ -255,6 +418,119 @@ public static partial class PolicyValidator
             errors.Add(Error(
                 path + "/keys",
                 $"A chord needs exactly one non-modifier key, found {nonModifiers}."));
+        }
+    }
+
+    /// <summary>
+    /// Refuse a <c>titleRegex</c> the engine cannot run safely.
+    /// </summary>
+    /// <remarks>
+    /// The engine matches titles on .NET's non-backtracking
+    /// engine, which is linear in the input and therefore immune to catastrophic backtracking —
+    /// but it refuses lookaround, backreferences and atomic groups, and it refuses them by throwing
+    /// when the pattern is constructed. Discovering that on a keypress would mean an automation the
+    /// user approved failing at the moment they needed it, so the same construction is attempted
+    /// here, where the answer becomes a validation error with a pointer.
+    /// <para>
+    /// The length cap is separate and cruder: a pattern is a machine-authored string in V2, and a
+    /// very long one is a sign of something other than a window title being matched.
+    /// </para>
+    /// </remarks>
+    private static void CheckSelectors(
+        string path, HotkeyAction action, PolicyOptions options, List<ValidationError> errors)
+    {
+        foreach (var (pointer, selector) in Selectors(action, path))
+        {
+            if (selector.TitleRegex is not { } pattern)
+            {
+                continue;
+            }
+
+            if (pattern.Length > options.MaxTitleRegexLength)
+            {
+                errors.Add(Error(
+                    pointer + "/titleRegex",
+                    $"The pattern is {pattern.Length} characters, over the limit of "
+                    + $"{options.MaxTitleRegexLength}. A window-title pattern this long is "
+                    + "matching something other than a window title."));
+                continue;
+            }
+
+            try
+            {
+                // Construction is the whole check: it parses the pattern and decides whether the
+                // linear-time engine will accept it. Nothing is matched here.
+                _ = new Regex(pattern, RegexOptions.NonBacktracking);
+            }
+            catch (ArgumentException invalid)
+            {
+                errors.Add(Error(
+                    pointer + "/titleRegex",
+                    $"\"{pattern}\" is not a valid regular expression: {invalid.Message}"));
+            }
+            catch (NotSupportedException unsupported)
+            {
+                errors.Add(Error(
+                    pointer + "/titleRegex",
+                    $"\"{pattern}\" uses a construct window matching does not allow. Titles are "
+                    + "matched by an engine that runs in time linear in the title's length, so a "
+                    + "pattern can never hang the desktop — the price is that lookaround, "
+                    + "backreferences and atomic groups are unavailable. Rewrite the pattern "
+                    + $"without them, or use titleContains. ({unsupported.Message})"));
+            }
+        }
+    }
+
+    /// <summary>Every window selector an action carries, with the pointer that reaches it.</summary>
+    /// <remarks>
+    /// Reflective for the same reason <see cref="Strings"/> is: a selector can sit directly on an
+    /// action, inside its <c>expect</c>, or inside a predicate — including one nested in an
+    /// <c>all_of</c> — and naming those places one by one is how a later primitive gets missed.
+    /// </remarks>
+    private static IEnumerable<(string Path, WindowSelector Selector)> Selectors(
+        object value, string path)
+    {
+        if (value is WindowSelector selector)
+        {
+            yield return (path, selector);
+            yield break;
+        }
+
+        if (value is IEnumerable<Condition> conditions)
+        {
+            var index = 0;
+            foreach (var condition in conditions)
+            {
+                foreach (var found in Selectors(condition, $"{path}/{index++}"))
+                {
+                    yield return found;
+                }
+            }
+
+            yield break;
+        }
+
+        if (value is not (HotkeyAction or Postcondition or Condition))
+        {
+            yield break;
+        }
+
+        foreach (var property in value.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0))
+        {
+            // Nested action lists belong to the outer walk, which visits them with their own
+            // pointers — descending into them here would report the same selector twice.
+            if (SafeRead(property, value) is not { } inner
+                || inner is IEnumerable<HotkeyAction>)
+            {
+                continue;
+            }
+
+            foreach (var found in Selectors(inner, $"{path}/{JsonName(property)}"))
+            {
+                yield return found;
+            }
         }
     }
 
@@ -288,7 +564,12 @@ public static partial class PolicyValidator
         }
 
         var assigned = new HashSet<string>(StringComparer.Ordinal);
-        var loopScoped = new HashSet<string>(StringComparer.Ordinal);
+        // Maps a foreach item variable to the pointer of the loop that owns it, so a read can be
+        // told apart from a read *after* the loop. This was a HashSet that nothing ever read, so
+        // the rule the doc comment above states plainly — and which the executor enforces at run
+        // time by clearing the variable — was never actually checked. A plan reading a loop
+        // variable afterwards validated clean and then silently interpolated an empty string.
+        var loopScoped = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var (path, action, _) in all)
         {
@@ -308,6 +589,14 @@ public static partial class PolicyValidator
                         $"{path}/{field}",
                         $"${{{name}}} is read before anything assigns it."));
                 }
+                else if (Escaped(loopScoped, name, path))
+                {
+                    errors.Add(Error(
+                        $"{path}/{field}",
+                        $"${{{name}}} is a foreach item variable, so it only exists inside its "
+                        + "loop. The engine clears it when the loop ends, so reading it here "
+                        + "would interpolate an empty string."));
+                }
 
                 if (property is not null)
                 {
@@ -318,8 +607,55 @@ public static partial class PolicyValidator
             // Writes happen after reads within the same action: an action never reads the
             // variable it is about to write.
             RecordWrites(path, action, declared, assigned, loopScoped, errors);
+
+            // The postcondition, though, runs after the action succeeded — so it may read what the
+            // action just wrote, and is checked on this side of the write.
+            foreach (var (name, property, field) in ExpectReferences(action))
+            {
+                if (!declared.TryGetValue(name, out var type))
+                {
+                    errors.Add(Error(
+                        $"{path}/{field}",
+                        $"${{{name}}} is not declared. Add it to \"variables\" with its type."));
+                    continue;
+                }
+
+                if (!assigned.Contains(name))
+                {
+                    errors.Add(Error(
+                        $"{path}/{field}",
+                        $"${{{name}}} is read before anything assigns it."));
+                }
+                else if (Escaped(loopScoped, name, path))
+                {
+                    errors.Add(Error(
+                        $"{path}/{field}",
+                        $"${{{name}}} is a foreach item variable, so it only exists inside its "
+                        + "loop. The engine clears it when the loop ends, so reading it here "
+                        + "would interpolate an empty string."));
+                }
+
+                if (property is not null)
+                {
+                    CheckProperty(path, field, name, property, type, errors);
+                }
+            }
         }
     }
+
+    /// <summary>
+    /// Whether this read of a loop item variable happens outside the loop that owns it.
+    /// </summary>
+    /// <remarks>
+    /// Decided by pointer prefix, which works because the walk is depth-first: every action inside
+    /// a loop has the loop's pointer as a prefix, and the first action that does not is the first
+    /// one after it. The loop action itself is excluded — it reads <c>source</c>, not the item.
+    /// </remarks>
+    private static bool Escaped(
+        Dictionary<string, string> loopScoped, string name, string path) =>
+        loopScoped.TryGetValue(name, out var owner)
+        && !path.StartsWith(owner + "/", StringComparison.Ordinal)
+        && !string.Equals(path, owner, StringComparison.Ordinal);
 
     private static void CheckProperty(
         string path,
@@ -352,33 +688,42 @@ public static partial class PolicyValidator
         HotkeyAction action,
         Dictionary<string, VariableType> declared,
         HashSet<string> assigned,
-        HashSet<string> loopScoped,
+        Dictionary<string, string> loopScoped,
         List<ValidationError> errors)
     {
+        // Anything other than a foreach assigning the name means it is no longer only a loop
+        // item, so reading it after the loop becomes legitimate again. Without this, reusing a
+        // name for both purposes would be reported forever after the first loop.
         switch (action)
         {
             case ListDirectoriesAction a:
                 Write(path, "into", a.Into, VariableType.PathList, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case ListFilesAction a:
                 Write(path, "into", a.Into, VariableType.PathList, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case PathExistsAction a:
                 Write(path, "into", a.Into, VariableType.Boolean, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case GetClipboardAction a:
                 Write(path, "into", a.Into, VariableType.Text, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case ShowInputAction a:
                 Write(path, "into", a.Into, VariableType.Text, declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case ShowPickerAction a:
                 WriteFromList(path, a.Source, "source", a.Into, "into", declared, assigned, errors);
+                loopScoped.Remove(a.Into);
                 break;
 
             case ForEachAction a:
@@ -387,7 +732,7 @@ public static partial class PolicyValidator
                     declared, assigned, errors);
 
                 // Scoped to the body. Reading it after the loop is a genuine mistake.
-                loopScoped.Add(a.ItemVariable);
+                loopScoped[a.ItemVariable] = path;
                 break;
         }
     }
@@ -472,8 +817,30 @@ public static partial class PolicyValidator
     /// variable rather than interpolating one (<c>into</c>, <c>source</c>) are excluded; they
     /// are handled as writes.
     /// </remarks>
+    /// <summary>Variables an action reads to do its work, before it writes anything.</summary>
     private static IEnumerable<(string Name, string? Property, string Field)> References(
-        HotkeyAction action)
+        HotkeyAction action) => References(action, expectations: false);
+
+    /// <summary>
+    /// Variables an action's postcondition reads, which happens after its own write.
+    /// </summary>
+    /// <remarks>
+    /// Split out because sequence matters and the two halves sit on opposite sides of the write. An
+    /// action never reads the variable it is about to write — but its <c>expect</c> runs once the
+    /// action has succeeded, so <c>get_clipboard</c> into <c>got</c> with <c>expect:
+    /// clipboard_matches contains ${got}</c> is not only legal, it is the natural way to verify a
+    /// clipboard write. Checking both halves before the write reported that as reading a variable
+    /// before anything assigned it.
+    /// <para>
+    /// Found once expectations became visible to the dataflow walk at all: until then this
+    /// ordering question appeared with them.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<(string Name, string? Property, string Field)> ExpectReferences(
+        HotkeyAction action) => References(action, expectations: true);
+
+    private static IEnumerable<(string Name, string? Property, string Field)> References(
+        HotkeyAction action, bool expectations)
     {
         var naming = new[] { "Into", "Source", "ItemVariable", "Variable" };
 
@@ -481,6 +848,12 @@ public static partial class PolicyValidator
             BindingFlags.Public | BindingFlags.Instance))
         {
             if (naming.Contains(property.Name, StringComparer.Ordinal))
+            {
+                continue;
+            }
+
+            if (string.Equals(property.Name, nameof(VerifiableAction.Expect), StringComparison.Ordinal)
+                != expectations)
             {
                 continue;
             }
@@ -500,17 +873,61 @@ public static partial class PolicyValidator
         }
     }
 
+    /// <summary>
+    /// Every string an action carries, however deeply nested.
+    /// </summary>
+    /// <remarks>
+    /// This once handled <c>string</c>,
+    /// <c>IEnumerable&lt;string&gt;</c> and <see cref="WindowSelector"/>, and everything else fell
+    /// through to nothing — so a <c>${...}</c> inside an <c>expect</c> or a predicate was invisible
+    /// to the declaration and assignment checks, and a plan reading a variable nothing ever wrote
+    /// validated clean. That is what let a vacuous postcondition reach run time from a valid plan:
+    /// the executor interpolated the unwritten variable to an empty string, and a check that
+    /// compared against nothing reported "verified".
+    /// <para>
+    /// It is a false negative in the layer whose own comment says reflection was chosen over a
+    /// switch precisely because "a missed case is a silent false negative". The fix keeps that
+    /// spirit — a reflective walk over any nested DSL record — so a primitive added later is
+    /// covered without anyone remembering to come back here.
+    /// </para>
+    /// </remarks>
     private static IEnumerable<string> Strings(object? value) => value switch
     {
+        null => [],
         string text => [text],
         IEnumerable<string> many => many,
-        WindowSelector selector => new[]
-            {
-                selector.TitleContains, selector.TitleRegex,
-                selector.ProcessName, selector.ClassName,
-            }.OfType<string>(),
+
+        // The DSL's own nested record types: postconditions, conditions, predicates, selectors.
+        // Walked by reflection rather than named one by one, so this does not have to be revisited
+        // every time the schema grows.
+        Postcondition or Condition or WindowSelector => Nested(value),
+
+        // A composite condition holds a list of more conditions.
+        IEnumerable<Condition> conditions => conditions.SelectMany(Strings),
+
         _ => [],
     };
+
+    /// <summary>Reflect over a DSL record's own properties and gather every string inside.</summary>
+    private static IEnumerable<string> Nested(object value) =>
+        value.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0)
+            .SelectMany(p => Strings(SafeRead(p, value)));
+
+    private static object? SafeRead(PropertyInfo property, object target)
+    {
+        try
+        {
+            return property.GetValue(target);
+        }
+#pragma warning disable CA1031 // A property that throws must not fail validation of the whole plan.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
+    }
 
     private static string JsonName(PropertyInfo property) =>
         property.GetCustomAttribute<System.Text.Json.Serialization.JsonPropertyNameAttribute>()

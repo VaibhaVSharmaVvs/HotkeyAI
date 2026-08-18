@@ -221,7 +221,7 @@
           "$ref": "#/$defs/TemplateString"
         },
         "titleRegex": {
-          "description": "Regular expression matched against the window title. Use only when a substring match is insufficient.",
+          "description": "Regular expression matched against the window title, case-sensitively. Use only when a substring match is insufficient. Matched by an engine that runs in time linear in the title's length, so no pattern can hang the desktop; the price is that lookaround ('(?=', '(?<='), backreferences ('\\1') and atomic groups ('(?>') are rejected. At most 200 characters.",
           "type": "string"
         },
         "className": {
@@ -974,7 +974,7 @@
           "const": "open_path"
         },
         "path": {
-          "description": "File or folder to open. Must sit under a configured allowed root.",
+          "description": "File or folder to open with whatever application is associated with it. Must sit under a configured allowed root. Refused for anything Windows executes rather than opens — .exe .com .bat .cmd .ps1 .vbs .js .lnk .url .hta .msi .reg .scr .cpl and the rest — because this hands the path to the shell, which would run it. To start a program, use launch_process with a logical 'app' name. Note that an allowed root can contain files this plan did not put there: opening every file a folder happens to hold is a plan whose behaviour is decided by whoever last wrote to it.",
           "$ref": "#/$defs/TemplateString"
         },
         "id": {

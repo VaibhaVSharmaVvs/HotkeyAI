@@ -22,6 +22,21 @@ public sealed partial class Variables
     private readonly Dictionary<string, object> values = new(StringComparer.Ordinal);
     private readonly Dictionary<string, VariableType> declared;
 
+    /// <summary>
+    /// Variables holding something the user did not put in the plan.
+    /// </summary>
+    /// <remarks>
+    /// <c>get_clipboard</c> and <c>type_text</c> were carefully kept out of the log, and then
+    /// <c>abort.reason</c> interpolated the same clipboard text into a step detail — which becomes
+    /// the transcript, the file under <c>%LOCALAPPDATA%\HotkeyAI\logs</c>, and the repair prompt
+    /// PLAN.md expects people to paste somewhere. An AWS key and a password reached it that way.
+    /// <para>
+    /// Provenance is the fix rather than pattern-matching the value, because a secret does not look
+    /// like anything in particular. What is known for certain is where it came from.
+    /// </para>
+    /// </remarks>
+    private readonly HashSet<string> fromOutsideThePlan = new(StringComparer.Ordinal);
+
     public Variables(IEnumerable<VariableDeclaration> declarations)
     {
         ArgumentNullException.ThrowIfNull(declarations);
@@ -37,16 +52,49 @@ public sealed partial class Variables
     public VariableType? TypeOf(string name) =>
         declared.TryGetValue(name, out var type) ? type : null;
 
-    public void SetText(string name, string value) => values[name] = value;
+    public void SetText(string name, string value) => Set(name, value);
 
-    public void SetPath(string name, string value) => values[name] = value;
+    /// <summary>
+    /// Store text that came from outside the plan, so it never reaches a log line.
+    /// </summary>
+    /// <remarks>
+    /// The clipboard and a prompt answer are the two sources whose contents nobody chose to write
+    /// down — see <see cref="fromOutsideThePlan"/>. A path the user picked is deliberately not in
+    /// this category: <c>show_picker</c> already logs the chosen path as its own outcome, and a
+    /// variable that redacted in one line while appearing in the one above it would be theatre.
+    /// </remarks>
+    public void SetTextFromOutsideThePlan(string name, string value)
+    {
+        values[name] = value;
+        fromOutsideThePlan.Add(name);
+    }
 
-    public void SetList(string name, IReadOnlyList<string> value) => values[name] = value;
+    public void SetPath(string name, string value) => Set(name, value);
 
-    public void SetBoolean(string name, bool value) => values[name] = value;
+    public void SetList(string name, IReadOnlyList<string> value) => Set(name, value);
+
+    public void SetBoolean(string name, bool value) => Set(name, value);
+
+    /// <summary>
+    /// Store a value the plan itself produced, clearing any earlier outside-the-plan marking.
+    /// </summary>
+    /// <remarks>
+    /// The clearing is the point. Reusing a name is legal, so a variable that held clipboard text
+    /// and was later written by <c>path_exists</c> holds a boolean the plan computed — redacting
+    /// that forever would make the log less useful for no gain.
+    /// </remarks>
+    private void Set(string name, object value)
+    {
+        values[name] = value;
+        fromOutsideThePlan.Remove(name);
+    }
 
     /// <summary>Remove a variable, used when a <c>foreach</c> item goes out of scope.</summary>
-    public void Clear(string name) => values.Remove(name);
+    public void Clear(string name)
+    {
+        values.Remove(name);
+        fromOutsideThePlan.Remove(name);
+    }
 
     public bool IsSet(string name) => values.ContainsKey(name);
 
@@ -72,7 +120,27 @@ public sealed partial class Variables
     /// validation. Failing loudly mid-run would abort an automation the user is watching; the
     /// path guard and postconditions are what catch a value going wrong.
     /// </remarks>
-    public string Interpolate(string? template)
+    public string Interpolate(string? template) => Interpolate(template, redact: false);
+
+    /// <summary>
+    /// Substitute as <see cref="Interpolate(string?)"/> does, but redact anything that came from
+    /// outside the plan.
+    /// </summary>
+    /// <remarks>
+    /// For text that will be written down rather than acted on. <c>abort.reason</c> was the first
+    /// field found putting clipboard contents into a file PLAN.md expects users to paste into
+    /// repair prompts, and the path-bearing details were the rest. The placeholder names the
+    /// variable, so the transcript still explains the shape of what happened — <c>${clip}</c>
+    /// redacted is far more use than a blank.
+    /// <para>
+    /// Deliberately a separate method rather than a flag on the existing one. Interpolating for the
+    /// desktop and interpolating for a log are different operations with different risks, and a
+    /// default parameter would let the wrong one be reached by forgetting rather than by choosing.
+    /// </para>
+    /// </remarks>
+    public string InterpolateForLog(string? template) => Interpolate(template, redact: true);
+
+    private string Interpolate(string? template, bool redact)
     {
         if (string.IsNullOrEmpty(template) || !template.Contains("${", StringComparison.Ordinal))
         {
@@ -86,6 +154,13 @@ public sealed partial class Variables
             if (!values.TryGetValue(name, out var value))
             {
                 return "";
+            }
+
+            // Before rendering, and regardless of which property was asked for: ${clip.name} of
+            // clipboard text is still clipboard text.
+            if (redact && fromOutsideThePlan.Contains(name))
+            {
+                return $"[{name} redacted]";
             }
 
             return match.Groups[2].Success

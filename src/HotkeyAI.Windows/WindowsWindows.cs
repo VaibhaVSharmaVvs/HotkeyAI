@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using HotkeyAI.Core.Dsl;
 using HotkeyAI.Engine.Platform;
 
@@ -24,24 +25,39 @@ public sealed class WindowsWindows : IWindows
     {
         ArgumentNullException.ThrowIfNull(selector);
 
-        WindowRef? best = null;
+        nint best = 0;
 
-        foreach (var window in Enumerate())
+        foreach (var (handle, title) in Candidates())
         {
-            if (!Matches(window, selector))
+            if (!Matches(handle, title, selector))
             {
                 continue;
             }
 
             // Prefer a window that is not minimised: an automation asking to focus something
             // almost always means the one the user can see.
-            if (best is null || (Native.IsIconic((nint)best.Value.Id) && !Native.IsIconic((nint)window.Id)))
+            if (best == 0 || (Native.IsIconic(best) && !Native.IsIconic(handle)))
             {
-                best = window;
+                best = handle;
             }
         }
 
-        return ValueTask.FromResult(best);
+        // The process name is looked up once, for the winner, rather than once per window. This
+        // used to build a full WindowRef for every visible window — Process.GetProcessById plus
+        // three syscalls for an integrity level nothing reads — on every pass, and a
+        // wait_for_window polls every 150 ms for up to its timeout.
+        return ValueTask.FromResult(best == 0 ? null : Describe(best));
+    }
+
+    /// <summary>Turn a handle into the record the engine sees.</summary>
+    private static WindowRef? Describe(nint handle)
+    {
+        Native.GetWindowThreadProcessId(handle, out var processId);
+
+        return new WindowRef(
+            handle,
+            ProcessName(processId) ?? "",
+            Native.GetWindowTitle(handle));
     }
 
     public ValueTask<string?> ForegroundProcessAsync(CancellationToken cancellationToken)
@@ -131,10 +147,23 @@ public sealed class WindowsWindows : IWindows
 
     // ---------------------------------------------------------------------------------
 
-    /// <summary>Visible top-level windows with a title, excluding shell furniture.</summary>
-    internal static List<WindowRef> Enumerate()
+    /// <summary>
+    /// Visible top-level windows with a title, excluding shell furniture — handle and title only.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately cheap. This once built a full <see cref="WindowRef"/> per window, which meant
+    /// <c>Process.GetProcessById</c> — a process-list read and an allocation — plus three syscalls
+    /// for an integrity level that nothing anywhere consumed. Multiplied by every visible window,
+    /// on every 150 ms poll of a <c>wait_for_window</c> that may run for its full timeout.
+    /// <para>
+    /// The title is read here because the common selector needs it and it is one cheap call.
+    /// Anything dearer — the process name, the class — is looked up only when a selector asks, or
+    /// once for the window that won.
+    /// </para>
+    /// </remarks>
+    private static List<(nint Handle, string Title)> Candidates()
     {
-        var found = new List<WindowRef>();
+        var found = new List<(nint, string)>();
 
         Native.EnumWindows(
             (handle, _) =>
@@ -149,13 +178,7 @@ public sealed class WindowsWindows : IWindows
                     return true;
                 }
 
-                Native.GetWindowThreadProcessId(handle, out var processId);
-
-                found.Add(new WindowRef(
-                    handle,
-                    ProcessName(processId) ?? "",
-                    Native.GetWindowTitle(handle),
-                    Integrity.IsHigherThanUs(processId)));
+                found.Add((handle, Native.GetWindowTitle(handle)));
 
                 return true;
             },
@@ -164,16 +187,48 @@ public sealed class WindowsWindows : IWindows
         return found;
     }
 
-    private static bool Matches(WindowRef window, WindowSelector selector)
-    {
-        if (selector.ProcessName is { } process
-            && !string.Equals(window.ProcessName, process, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
+    /// <summary>
+    /// How long a single title may be tested against a selector's pattern.
+    /// </summary>
+    /// <remarks>
+    /// A backstop, not the defence — <see cref="TitleOptions"/> is. Per window, and that is the
+    /// cost worth knowing: the enumeration runs over every visible top-level window, and a
+    /// wait_for_window polling every 150 ms can repeat the whole sweep for as long as its timeout
+    /// allows.
+    /// </remarks>
+    private static readonly TimeSpan RegexBudget = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>
+    /// Title patterns run on the non-backtracking engine, so they cannot blow up.
+    /// </summary>
+    /// <remarks>
+    /// A guarantee rather than a heuristic, which is the whole reason for it: a backtracking
+    /// heuristic in the policy layer would only be a guess. .NET's non-backtracking engine matches
+    /// in time linear in the input, so <c>^(a+)+$</c> — which times out the ordinary engine on
+    /// forty characters — answers in single-digit milliseconds, and there is no pattern that does
+    /// not.
+    /// <para>
+    /// The trade is lookaround, backreferences and atomic groups, which this engine refuses at
+    /// construction. That is a fair price for matching window titles, and
+    /// <c>PolicyValidator</c> refuses such a pattern up front so the plan is rejected at authoring
+    /// time rather than failing on a keypress.
+    /// </para>
+    /// </remarks>
+    private const RegexOptions TitleOptions = RegexOptions.NonBacktracking;
+
+    /// <summary>
+    /// Whether one window satisfies a selector, buying only the information the selector asks for.
+    /// </summary>
+    /// <remarks>
+    /// Ordered cheapest first, and that ordering is the point: the title arrives with the
+    /// candidate, so a <c>titleContains</c> that does not match costs a string comparison and
+    /// nothing else. The process name — a process-list read — and the window class are fetched only
+    /// if a selector names them, and only for windows that got that far.
+    /// </remarks>
+    private static bool Matches(nint handle, string title, WindowSelector selector)
+    {
         if (selector.TitleContains is { } fragment
-            && !window.Title.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+            && !title.Contains(fragment, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -182,33 +237,57 @@ public sealed class WindowsWindows : IWindows
         {
             try
             {
-                if (!System.Text.RegularExpressions.Regex.IsMatch(
-                        window.Title,
-                        pattern,
-                        System.Text.RegularExpressions.RegexOptions.None,
-                        TimeSpan.FromMilliseconds(250)))
+                if (!Regex.IsMatch(title, pattern, TitleOptions, RegexBudget))
                 {
                     return false;
                 }
             }
-            catch (Exception ex) when (ex is ArgumentException or RegexMatchTimeoutMarker)
+            catch (RegexMatchTimeoutException)
             {
-                return false;
+                // Reported, not swallowed. The catch filter here used to test a private marker
+                // class that nothing in the repository ever throws, so the real
+                // RegexMatchTimeoutException escaped, aborted the enumeration partway and surfaced
+                // as a raw exception message. Returning false would be worse than that: a
+                // catastrophic pattern would silently match nothing, and "no window found" is the
+                // one answer that looks like an ordinary result.
+                throw new InvalidOperationException(
+                    $"The titleRegex \"{pattern}\" took longer than "
+                    + $"{RegexBudget.TotalMilliseconds:F0} ms to test against a window title, so "
+                    + "the selector was abandoned.");
+            }
+            catch (Exception invalid) when (invalid is ArgumentException or NotSupportedException)
+            {
+                // Also reported. An unparseable pattern is a fault in the plan, and silently
+                // matching nothing hides it behind an empty result. Both should already have been
+                // refused by PolicyValidator.CheckSelectors before the plan was installed —
+                // NotSupportedException is what the linear-time engine raises for lookaround and
+                // backreferences — so reaching here means a plan bypassed validation.
+                throw new InvalidOperationException(
+                    $"The titleRegex \"{pattern}\" cannot be used: " + invalid.Message);
             }
         }
 
         if (selector.ClassName is { } className
             && !string.Equals(
-                Native.GetWindowClass((nint)window.Id), className, StringComparison.OrdinalIgnoreCase))
+                Native.GetWindowClass(handle), className, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
+        // Last, because it is the dearest: Process.GetProcessById reads the process list and
+        // allocates. By here the title and class have already ruled most windows out.
+        if (selector.ProcessName is { } process)
+        {
+            Native.GetWindowThreadProcessId(handle, out var processId);
+
+            if (!string.Equals(ProcessName(processId), process, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
         return true;
     }
-
-    /// <summary>Alias so the catch filter above reads clearly.</summary>
-    private sealed class RegexMatchTimeoutMarker : Exception;
 
     private static string? ProcessName(uint processId)
     {

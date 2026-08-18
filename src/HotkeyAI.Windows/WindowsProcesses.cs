@@ -6,8 +6,8 @@ namespace HotkeyAI.Windows;
 /// <summary>Process launch, lookup and termination.</summary>
 public sealed class WindowsProcesses(AppResolver resolver) : IProcesses
 {
-    public ValueTask<string?> ResolveAsync(string logicalName, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(resolver.Resolve(logicalName));
+    public ValueTask<AppResolution> ResolveAsync(string logicalName, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(resolver.ResolveForLaunch(logicalName));
 
     public ValueTask LaunchAsync(
         string executablePath,
@@ -42,34 +42,18 @@ public sealed class WindowsProcesses(AppResolver resolver) : IProcesses
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask<bool> IsRunningAsync(string processName, CancellationToken cancellationToken)
-    {
-        var trimmed = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? processName[..^4]
-            : processName;
+    public ValueTask<bool> IsRunningAsync(string processName, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(Count(processName) > 0);
 
-        var running = Process.GetProcessesByName(trimmed);
-        try
-        {
-            return ValueTask.FromResult(running.Length > 0);
-        }
-        finally
-        {
-            foreach (var process in running)
-            {
-                process.Dispose();
-            }
-        }
-    }
+    public ValueTask<int> CountAsync(string processName, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(Count(processName));
 
-    public ValueTask TerminateAsync(
+    public ValueTask<int> TerminateAsync(
         string processName, bool force, CancellationToken cancellationToken)
     {
-        var trimmed = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? processName[..^4]
-            : processName;
+        var acted = 0;
 
-        foreach (var process in Process.GetProcessesByName(trimmed))
+        foreach (var process in Process.GetProcessesByName(Trim(processName)))
         {
             using (process)
             {
@@ -88,6 +72,8 @@ public sealed class WindowsProcesses(AppResolver resolver) : IProcesses
                             process.Kill();
                         }
                     }
+
+                    acted++;
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
                 {
@@ -97,6 +83,34 @@ public sealed class WindowsProcesses(AppResolver resolver) : IProcesses
             }
         }
 
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(acted);
     }
+
+    /// <summary>
+    /// How many processes carry this name. Counted the same way termination selects them, so the
+    /// number in the confirmation prompt is the number that will be killed.
+    /// </summary>
+    private static int Count(string processName)
+    {
+        var running = Process.GetProcessesByName(Trim(processName));
+        try
+        {
+            return running.Length;
+        }
+        finally
+        {
+            foreach (var process in running)
+            {
+                process.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Process.GetProcessesByName wants the name without the extension, and plans write both.
+    /// </summary>
+    private static string Trim(string processName) =>
+        processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? processName[..^4]
+            : processName;
 }
